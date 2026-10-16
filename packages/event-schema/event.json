@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SentinelX Normalized Event",
+  "type": "object",
+  "required": ["timestamp", "event_type"],
+  "properties": {
+    "event_id": { "type": "string", "description": "Unique ID, server-generated if absent. Used for idempotency." },
+    "timestamp": { "type": "string", "format": "date-time", "description": "UTC RFC3339" },
+    "source_type": { "type": "string", "enum": ["auth", "web", "api", "db", "host", "cloud", "simulator"] },
+    "source_name": { "type": "string" },
+    "event_type": { "type": "string", "enum": ["authentication_failed", "authentication_success", "authorization_denied", "admin_action", "web_request", "high_risk_event", "generic"] },
+    "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"], "default": "medium" },
+    "src_ip": { "type": "string", "description": "Use documentation IPs (192.0.2.0/24 etc.) for simulation" },
+    "username": { "type": "string" },
+    "message": { "type": "string", "maxLength": 4096 },
+    "attributes": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info:
+  title: SentinelX Core API (slice 1 + week 2)
+  version: 0.2.0
+servers:
+  - url: http://localhost:8080/api/v1
+paths:
+  /auth/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: token
+  /dashboard/overview:
+    get:
+      summary: Dashboard summary (counts + sources health)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: counts }
+  /sources:
+    get:
+      summary: List log sources
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: source list }
+    post:
+      summary: Create log source (analyst/admin)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                source_type: { type: string, enum: [simulator, auth, web, api, host, cloud] }
+      responses:
+        '201': { description: created source }
+        '403': { description: viewer cannot write }
+  /ingest/events:
+    post:
+      summary: Ingest structured events
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                source_id: { type: string }
+                events:
+                  type: array
+                  maxItems: 1000
+                  items: { type: object }
+      responses:
+        '202': { description: accepted batch }
+        '400': { description: invalid payload }
+  /ingest/upload:
+    post:
+      summary: Upload .jsonl (one object per line) or .json (array). Max 10MB / 5000 events.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                source_id: { type: string }
+      responses:
+        '202': { description: accepted file batch }
+        '400': { description: invalid file }
+  /events:
+    get:
+      summary: Search events (filters + pagination, newest first)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: event_type
+          schema: { type: string }
+        - in: query
+          name: src_ip
+          schema: { type: string }
+        - in: query
+          name: username
+          schema: { type: string }
+        - in: query
+          name: source_id
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200': { description: '{events, total, limit, offset}' }
+  /events/{id}:
+    get:
+      summary: Event detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: event }
+  /alerts:
+    get:
+      summary: List alerts
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: alert list }
+  /alerts/{id}:
+    get:
+      summary: Alert detail with evidence
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: alert }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

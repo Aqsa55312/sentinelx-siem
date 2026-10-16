@@ -1,0 +1,16 @@
+id: DET-001
+name: brute-force-like authentication failures
+version: 1
+enabled: true
+description: Many authentication_failed events from the same src_ip within a time window.
+condition:
+  event_type: authentication_failed
+  group_by: src_ip
+  threshold: 5
+  window_seconds: 300
+severity: high
+confidence: 80
+tests:
+  - TC-01: 6 failures same IP in 5 min => MUST alert
+  - TC-02: 4 failures same IP in 5 min => MUST NOT alert
+notes: Threshold is a starting default for the demo dataset. Tune with precision/recall measurements.

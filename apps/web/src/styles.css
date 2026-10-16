@@ -1,0 +1,27 @@
+:root { color-scheme: dark; }
+body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #0b1220; color: #e5e7eb; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.center { display: flex; justify-content: center; padding-top: 80px; }
+.card { background: #111c33; border: 1px solid #243; border-radius: 10px; padding: 16px; margin-bottom: 16px; border-color: #22314f; }
+.login { width: 360px; }
+.muted { color: #94a3b8; } .small { font-size: 12px; } .mono { font-family: monospace; font-size: 12px; }
+.big { font-size: 40px; font-weight: bold; }
+.topbar { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+.topbar nav { display: flex; gap: 8px; }
+button { background: #2563eb; border: 0; color: white; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+button.active { background: #1d4ed8; outline: 2px solid #60a5fa; }
+button.ghost { background: transparent; border: 1px solid #334155; margin-left: auto; }
+input { width: 100%; padding: 8px; margin: 6px 0 12px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: #e5e7eb; }
+label { font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+th, td { text-align: left; padding: 8px; border-bottom: 1px solid #22314f; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; }
+.row { display: flex; gap: 8px; } .row input { flex: 1; }
+.error { background: #7f1d1d; padding: 8px; border-radius: 8px; margin: 8px 0; }
+.alertrow { display: flex; gap: 10px; align-items: center; padding: 10px; border-bottom: 1px solid #22314f; cursor: pointer; }
+.alertrow:hover { background: #16233f; }
+.sev { padding: 2px 8px; border-radius: 20px; font-size: 11px; text-transform: uppercase; }
+.sev.high { background: #b45309; } .sev.critical { background: #b91c1c; }
+.sev.medium { background: #1d4ed8; } .sev.low { background: #475569; }
+pre { background: #0b1220; padding: 12px; border-radius: 8px; overflow: auto; }

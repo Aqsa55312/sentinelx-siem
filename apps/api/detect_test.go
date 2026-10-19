@@ -68,7 +68,7 @@ func TestIngest_Idempotent(t *testing.T) {
 func TestTenantIsolation(t *testing.T) {
 	st := NewMemoryStore()
 	raw := []map[string]any{{
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
 		"event_type": "authentication_failed", "src_ip": "192.0.2.40", "message": "x",
 	}}
 	st.Ingest("org-demo-01", "source-demo-01", raw)
@@ -92,7 +92,7 @@ func TestRedaction(t *testing.T) {
 	st := NewMemoryStore()
 	raw := []map[string]any{{
 		"timestamp": time.Now().UTC().Format(time.RFC3339), "event_type": "web_request",
-		"message":   "call with Bearer abcdef123456",
+		"message":    "call with Bearer abcdef123456",
 		"attributes": map[string]any{"api_key": "super-secret", "user": "u"},
 	}}
 	acc, _ := st.Ingest("org-demo-01", "source-demo-01", raw)

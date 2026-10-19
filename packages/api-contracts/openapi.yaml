@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: SentinelX Core API (slice 1 + week 2)
-  version: 0.2.0
+  title: SentinelX Core API (slice 1 + week 3)
+  version: 0.3.0
 servers:
   - url: http://localhost:8080/api/v1
 paths:
@@ -148,6 +148,12 @@ paths:
           schema: { type: string }
       responses:
         '200': { description: alert }
+  /rules:
+    get:
+      summary: Detection rule registry with config and test cases
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: rule list }
 components:
   securitySchemes:
     bearerAuth:

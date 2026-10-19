@@ -1,0 +1,17 @@
+id: DET-003
+name: admin activity outside baseline hours
+version: 1
+enabled: true
+description: admin_action outside the simulated baseline hours (UTC). Baseline is overridable per event.
+condition:
+  event_type: admin_action
+  baseline_start_hour_utc: 8
+  baseline_end_hour_utc: 18
+  override_attributes: [baseline_start_hour, baseline_end_hour]
+severity: medium
+confidence: 60
+tests:
+  - admin_action at 02:15 UTC => MUST alert
+  - admin_action at 10:00 UTC => MUST NOT alert
+  - 24h baseline override => MUST NOT alert
+notes: Baseline is simulated, not learned. Tune against real shift patterns before production use.

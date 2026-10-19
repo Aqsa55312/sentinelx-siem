@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 
-type Tab = 'overview' | 'events' | 'alerts' | 'sources';
+type Tab = 'overview' | 'events' | 'alerts' | 'rules' | 'sources';
 
 export default function App() {
   const [tok, setTok] = useState<string | null>(localStorage.getItem('sx_token'));
@@ -45,7 +45,7 @@ export default function App() {
       <header className="topbar">
         <strong>SentinelX</strong>
         <nav>
-          {(['overview', 'events', 'alerts', 'sources'] as Tab[]).map((t) => (
+          {(['overview', 'events', 'alerts', 'rules', 'sources'] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
               {t}
             </button>
@@ -64,6 +64,7 @@ export default function App() {
       {tab === 'overview' && <Overview />}
       {tab === 'events' && <Events />}
       {tab === 'alerts' && <Alerts />}
+      {tab === 'rules' && <Rules />}
       {tab === 'sources' && <Sources />}
     </div>
   );
@@ -94,6 +95,15 @@ function Overview() {
       <div className="card">
         <h3>Sources</h3>
         <pre>{JSON.stringify(data.sources ?? [], null, 2)}</pre>
+      </div>
+      <div className="card">
+        <h3>Top detection rules</h3>
+        <pre>{JSON.stringify(data.alerts_by_rule ?? {}, null, 2)}</pre>
+      </div>
+      <div className="card">
+        <h3>Active alerts</h3>
+        <div className="big">{data.active_incidents ?? 0}</div>
+        <p className="muted small">new + triaged + investigating</p>
       </div>
     </div>
   );
@@ -191,6 +201,36 @@ function Events() {
         <button disabled={offset + limit >= total} onClick={() => load(offset + limit)}>Next</button>
       </div>
       {events.length === 0 && <p className="muted">No events. Ingest a fixture or upload a file first.</p>}
+    </div>
+  );
+}
+
+function Rules() {
+  const [rules, setRules] = useState<any[]>([]);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    api.rules().then((r) => setRules(r.rules ?? [])).catch((e: any) => setErr(e.message));
+  }, []);
+  return (
+    <div className="card">
+      <h3>Detection Rules</h3>
+      <p className="muted small">Read-only registry. Every rule has positive and negative test cases in `apps/api/*_test.go`.</p>
+      {err && <div className="error">{err}</div>}
+      {rules.map((r: any) => (
+        <div key={r.rule_id} className="card" style={{ background: '#0e1830' }}>
+          <div className="row" style={{ alignItems: 'center' }}>
+            <strong>{r.name}</strong>
+            <span className={`sev ${r.severity}`}>{r.severity}</span>
+            <span className="muted mono">v{r.version} · {r.enabled ? 'enabled' : 'disabled'}</span>
+          </div>
+          <p className="muted small">{r.description}</p>
+          <pre>{JSON.stringify(r.config, null, 2)}</pre>
+          <h4>Tests</h4>
+          <ul className="small">
+            {(r.test_cases ?? []).map((t: string, i: number) => <li key={i}>{t}</li>)}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

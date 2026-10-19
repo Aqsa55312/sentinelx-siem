@@ -20,5 +20,11 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO detection_rules (id, organization_id, name, version, config, enabled) VALUES
   ('rule-det-001', 'org-demo-01', 'DET-001 brute-force-like', 1,
-   '{"threshold": 5, "window_seconds": 300, "event_type": "authentication_failed", "group_by": "src_ip"}', TRUE)
+   '{"threshold": 5, "window_seconds": 300, "event_type": "authentication_failed", "group_by": "src_ip"}', TRUE),
+  ('rule-det-002', 'org-demo-01', 'DET-002 suspicious auth sequence', 1,
+   '{"min_failures": 3, "window_seconds": 600, "event_types": ["authentication_failed","authentication_success"], "group_by": ["username","src_ip"]}', TRUE),
+  ('rule-det-003', 'org-demo-01', 'DET-003 policy anomaly', 1,
+   '{"event_type": "admin_action", "baseline_start_hour_utc": 8, "baseline_end_hour_utc": 18}', TRUE),
+  ('rule-det-004', 'org-demo-01', 'DET-004 repeated high-risk', 1,
+   '{"threshold": 3, "window_seconds": 120, "event_type": "high_risk_event", "group_by": "src_ip"}', TRUE)
 ON CONFLICT (id) DO NOTHING;

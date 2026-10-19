@@ -41,6 +41,7 @@ type Alert struct {
 	WindowStart *time.Time `json:"window_start,omitempty"`
 	WindowEnd   *time.Time `json:"window_end,omitempty"`
 	Reason      string     `json:"reason"`
+	DedupeKey   string     `json:"-"`
 	CreatedAt   time.Time  `json:"created_at"`
 	EventIDs    []string   `json:"event_ids"`
 }
@@ -128,9 +129,9 @@ func validateEventInput(m map[string]any) (Event, string) {
 	}
 	e := Event{
 		Timestamp: ts.UTC(), EventType: et, Severity: sev,
-		SrcIP:    strField(m, "src_ip"),
-		Username: strField(m, "username"),
-		Message:  redactMessage(msg),
+		SrcIP:      strField(m, "src_ip"),
+		Username:   strField(m, "username"),
+		Message:    redactMessage(msg),
 		Attributes: redactAttrs(attrs),
 	}
 	if id, _ := m["event_id"].(string); id != "" {
@@ -197,6 +198,7 @@ func (f EventFilter) matches(e Event) bool {
 type Store interface {
 	Login(email, password string) (User, error)
 	ListEvents(orgID string, f EventFilter, limit, offset int) (events []Event, total int)
+	EventsInWindow(orgID string, f EventFilter, from, to time.Time) []Event
 	GetEvent(orgID, id string) (Event, bool)
 	Ingest(orgID, sourceID string, raw []map[string]any) (accepted []Event, rejected int)
 	ListAlerts(orgID string) []Alert
@@ -204,7 +206,7 @@ type Store interface {
 	Overview(orgID string) map[string]any
 	CountFailures(orgID, srcIP string, since time.Time) []Event
 	CreateAlert(a Alert) Alert
-	HasOpenAlertFor(ruleID, orgID, srcIP string, since time.Time) bool
+	HasRecentAlert(orgID, ruleID, dedupeKey string, since time.Time) bool
 	ListSources(orgID string) []Source
 	CreateSource(orgID, name, typ string) (Source, error)
 	Audit(orgID, actor, action, target, result, corrID string)
@@ -305,6 +307,31 @@ func (s *MemoryStore) ListEvents(orgID string, f EventFilter, limit, offset int)
 	return matched[offset:end], total
 }
 
+func (s *MemoryStore) EventsInWindow(orgID string, f EventFilter, from, to time.Time) []Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []Event{}
+	for _, e := range s.events {
+		if e.OrgID != orgID || !f.matches(e) {
+			continue
+		}
+		if e.Timestamp.Before(from) || !e.Timestamp.Before(to) {
+			continue
+		}
+		out = append(out, e)
+	}
+	sortEventsAsc(out)
+	return out
+}
+
+func sortEventsAsc(evs []Event) {
+	for i := 1; i < len(evs); i++ {
+		for j := i; j > 0 && evs[j].Timestamp.Before(evs[j-1].Timestamp); j-- {
+			evs[j], evs[j-1] = evs[j-1], evs[j]
+		}
+	}
+}
+
 func (s *MemoryStore) GetEvent(orgID, id string) (Event, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -348,9 +375,16 @@ func (s *MemoryStore) Overview(orgID string) map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	bySev := map[string]int{}
+	byRule := map[string]int{}
+	active := 0
 	for _, a := range s.alerts {
-		if a.OrgID == orgID {
-			bySev[a.Severity]++
+		if a.OrgID != orgID {
+			continue
+		}
+		bySev[a.Severity]++
+		byRule[a.RuleID]++
+		if a.Status == "new" || a.Status == "triaged" || a.Status == "investigating" {
+			active++
 		}
 	}
 	n := 0
@@ -361,9 +395,11 @@ func (s *MemoryStore) Overview(orgID string) map[string]any {
 	}
 	return map[string]any{
 		"organization_id": orgID, "total_events": n,
-		"total_alerts": len(bySevList(s.alerts, orgID)),
+		"total_alerts":       len(bySevList(s.alerts, orgID)),
+		"active_incidents":   active,
 		"alerts_by_severity": bySev,
-		"ingested": s.ingested, "rejected": s.rejected,
+		"alerts_by_rule":     byRule,
+		"ingested":           s.ingested, "rejected": s.rejected,
 		"sources": s.sourcesFor(orgID),
 	}
 }
@@ -439,11 +475,11 @@ func (s *MemoryStore) CreateAlert(a Alert) Alert {
 	return a
 }
 
-func (s *MemoryStore) HasOpenAlertFor(ruleID, orgID, srcIP string, since time.Time) bool {
+func (s *MemoryStore) HasRecentAlert(orgID, ruleID, dedupeKey string, since time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, a := range s.alerts {
-		if a.RuleID == ruleID && a.OrgID == orgID && a.CreatedAt.After(since) && strings.Contains(a.Reason, srcIP) {
+		if a.OrgID == orgID && a.RuleID == ruleID && a.DedupeKey == dedupeKey && !a.CreatedAt.Before(since) {
 			return true
 		}
 	}
@@ -465,7 +501,7 @@ func (s *MemoryStore) AuditCount() int {
 // ---------- PostgresStore (used when DATABASE_URL set) ----------
 
 type PostgresStore struct {
-	db *sql.DB
+	db  *sql.DB
 	mem *MemoryStore // audit counters fallback; primary reads go to PG
 }
 
@@ -701,6 +737,37 @@ func (p *PostgresStore) GetAlert(orgID, id string) (Alert, []Event, bool) {
 	return a, evs, true
 }
 
+func (p *PostgresStore) EventsInWindow(orgID string, f EventFilter, from, to time.Time) []Event {
+	f.From, f.HasFrom = from, true
+	f.To, f.HasTo = to, true
+	where, args := eventWhere(orgID, f)
+	q := `SELECT id, organization_id, source_id, timestamp, event_type, severity, src_ip, username, message, attributes FROM events ` +
+		where + ` ORDER BY timestamp ASC`
+	rows, err := p.db.Query(q, args...)
+	if err != nil {
+		return []Event{}
+	}
+	defer rows.Close()
+	out := []Event{}
+	for rows.Next() {
+		var e Event
+		var ts time.Time
+		var src, ip, un, msg sql.NullString
+		var attrs string
+		if err := rows.Scan(&e.ID, &e.OrgID, &src, &ts, &e.EventType, &e.Severity, &ip, &un, &msg, &attrs); err != nil {
+			continue
+		}
+		e.SourceID = src.String
+		e.Timestamp = ts
+		e.SrcIP = ip.String
+		e.Username = un.String
+		e.Message = msg.String
+		_ = json.Unmarshal([]byte(attrs), &e.Attributes)
+		out = append(out, e)
+	}
+	return out
+}
+
 func (p *PostgresStore) Overview(orgID string) map[string]any {
 	var total int
 	_ = p.db.QueryRow(`SELECT count(*) FROM events WHERE organization_id=$1`, orgID).Scan(&total)
@@ -715,7 +782,24 @@ func (p *PostgresStore) Overview(orgID string) map[string]any {
 			bySev[s] = c
 		}
 	}
-	return map[string]any{"organization_id": orgID, "total_events": total, "alerts_by_severity": bySev, "sources": p.ListSources(orgID)}
+	byRule := map[string]int{}
+	rr, _ := p.db.Query(`SELECT rule_id, count(*) FROM alerts WHERE organization_id=$1 GROUP BY rule_id`, orgID)
+	if rr != nil {
+		defer rr.Close()
+		for rr.Next() {
+			var s sql.NullString
+			var c int
+			_ = rr.Scan(&s, &c)
+			byRule[s.String] = c
+		}
+	}
+	var active int
+	_ = p.db.QueryRow(`SELECT count(*) FROM alerts WHERE organization_id=$1 AND status IN ('new','triaged','investigating')`, orgID).Scan(&active)
+	return map[string]any{
+		"organization_id": orgID, "total_events": total,
+		"alerts_by_severity": bySev, "alerts_by_rule": byRule,
+		"active_incidents": active, "sources": p.ListSources(orgID),
+	}
 }
 
 func (p *PostgresStore) CountFailures(orgID, srcIP string, since time.Time) []Event {
@@ -749,9 +833,9 @@ func (p *PostgresStore) CreateAlert(a Alert) Alert {
 		a.ID = newID("alt")
 	}
 	a.CreatedAt = time.Now().UTC()
-	_, _ = p.db.Exec(`INSERT INTO alerts (id, organization_id, rule_id, rule_version, title, severity, risk_score, status, window_start, window_end, reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+	_, _ = p.db.Exec(`INSERT INTO alerts (id, organization_id, rule_id, rule_version, title, severity, risk_score, status, window_start, window_end, reason, dedupe_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		a.ID, a.OrgID, sql.NullString{String: a.RuleID, Valid: a.RuleID != ""}, a.RuleVersion, a.Title, a.Severity, a.RiskScore, a.Status,
-		toNullTime(a.WindowStart), toNullTime(a.WindowEnd), a.Reason)
+		toNullTime(a.WindowStart), toNullTime(a.WindowEnd), a.Reason, sql.NullString{String: a.DedupeKey, Valid: a.DedupeKey != ""})
 	for _, eid := range a.EventIDs {
 		_, _ = p.db.Exec(`INSERT INTO alert_events (alert_id, event_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, a.ID, eid)
 	}
@@ -765,9 +849,10 @@ func toNullTime(t *time.Time) sql.NullTime {
 	return sql.NullTime{Time: *t, Valid: true}
 }
 
-func (p *PostgresStore) HasOpenAlertFor(ruleID, orgID, srcIP string, since time.Time) bool {
+func (p *PostgresStore) HasRecentAlert(orgID, ruleID, dedupeKey string, since time.Time) bool {
 	var c int
-	_ = p.db.QueryRow(`SELECT count(*) FROM alerts WHERE rule_id=$1 AND organization_id=$2 AND created_at >= $3 AND reason LIKE '%'||$4||'%'`, ruleID, orgID, since, srcIP).Scan(&c)
+	_ = p.db.QueryRow(`SELECT count(*) FROM alerts WHERE organization_id=$1 AND rule_id=$2 AND dedupe_key=$3 AND created_at >= $4`,
+		orgID, ruleID, dedupeKey, since).Scan(&c)
 	return c > 0
 }
 
@@ -811,7 +896,8 @@ func (p *PostgresStore) CreateSource(orgID, name, typ string) (Source, error) {
 	return s, nil
 }
 
-func (p *PostgresStore) Audit(orgID, actor, action, target, result, corrID string) {	_, _ = p.db.Exec(`INSERT INTO audit_logs (id, organization_id, actor_id, action, target_id, result, correlation_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+func (p *PostgresStore) Audit(orgID, actor, action, target, result, corrID string) {
+	_, _ = p.db.Exec(`INSERT INTO audit_logs (id, organization_id, actor_id, action, target_id, result, correlation_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 		newID("aud"), sql.NullString{String: orgID, Valid: orgID != ""}, sql.NullString{String: actor, Valid: actor != ""},
 		action, sql.NullString{String: target, Valid: target != ""}, result, sql.NullString{String: corrID, Valid: corrID != ""})
 }

@@ -1,0 +1,16 @@
+id: DET-004
+name: repeated high-risk events
+version: 1
+enabled: true
+description: Repeated high_risk_event from the same source in a short window.
+condition:
+  event_type: high_risk_event
+  group_by: src_ip
+  threshold: 3
+  window_seconds: 120
+severity: high
+confidence: 70
+tests:
+  - 3 high-risk events / 2 min same IP => MUST alert
+  - 2 high-risk events / 2 min => MUST NOT alert
+notes: Grouping by src_ip can merge shared/NAT sources; treat evidence as a lead, not attribution.

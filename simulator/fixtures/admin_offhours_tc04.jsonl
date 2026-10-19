@@ -1,0 +1,2 @@
+{"timestamp":"2026-10-16T02:15:00Z","event_type":"admin_action","username":"night-admin","src_ip":"192.0.2.60","message":"User account created outside baseline hours","source_name":"demo-idp-01","severity":"medium","attributes":{"action":"user.create","environment":"lab"}}
+{"timestamp":"2026-10-16T10:00:00Z","event_type":"admin_action","username":"day-admin","src_ip":"192.0.2.61","message":"Policy reviewed during baseline hours","source_name":"demo-idp-01","severity":"low","attributes":{"action":"policy.review","environment":"lab"}}

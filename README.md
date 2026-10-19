@@ -629,29 +629,29 @@ Sensitive actions should generate auditable records containing the actor, action
 
 SentinelX is planned to evolve through incremental milestones.
 
-- [ ] **Phase 1 — Foundation**
-  - [ ] Initialize the repository structure.
-  - [ ] Define event schemas and coding conventions.
-  - [ ] Create the BRD, PRD, and architecture documentation.
-  - [ ] Prepare local development configuration.
+- [x] **Phase 1 — Foundation**
+  - [x] Initialize the repository structure.
+  - [x] Define event schemas and coding conventions.
+  - [x] Create the BRD, PRD, and architecture documentation.
+  - [x] Prepare local development configuration.
 
-- [ ] **Phase 2 — Event Ingestion**
-  - [ ] Implement the Go API foundation.
-  - [ ] Validate and normalize incoming events.
-  - [ ] Configure PostgreSQL and OpenSearch.
-  - [ ] Create sample event fixtures.
+- [x] **Phase 2 — Event Ingestion**
+  - [x] Implement the Go API foundation.
+  - [x] Validate and normalize incoming events.
+  - [ ] Configure PostgreSQL and OpenSearch. _(PostgreSQL schema/store ready and used when `DATABASE_URL` is set; OpenSearch not started)_
+  - [x] Create sample event fixtures.
 
-- [ ] **Phase 3 — Detection Engine**
-  - [ ] Implement configurable detection rules.
-  - [ ] Add authentication failure detection.
-  - [ ] Implement time-window correlation.
-  - [ ] Add initial risk scoring.
-  - [ ] Write unit and integration tests.
+- [x] **Phase 3 — Detection Engine**
+  - [x] Implement configurable detection rules.
+  - [x] Add authentication failure detection.
+  - [x] Implement time-window correlation.
+  - [x] Add initial risk scoring.
+  - [x] Write unit and integration tests.
 
 - [ ] **Phase 4 — Incident Management**
   - [ ] Implement incident CRUD operations.
   - [ ] Add incident status and assignment workflows.
-  - [ ] Build the initial React dashboard.
+  - [x] Build the initial React dashboard. _(overview, event explorer, alerts, rules, sources)_
   - [ ] Display events, alerts, and incident timelines.
 
 - [ ] **Phase 5 — AI Investigation**
@@ -736,6 +736,7 @@ Additional documentation will describe the project in more detail.
 | `docs/ARCHITECTURE.md` | System components, data flow, and technical decisions |
 | `docs/API.md` | API endpoints, schemas, authentication, and error handling |
 | `docs/THREAT_MODEL.md` | Threats, trust boundaries, risks, and mitigation strategies |
+| `docs/DEVELOPMENT.md` | Implemented scope, runbook, demo scenarios, and known limitations |
 
 Create these files as the corresponding documentation is finalized, and keep them aligned with the actual implementation.
 

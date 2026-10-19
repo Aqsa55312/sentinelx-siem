@@ -29,6 +29,7 @@ export const api = {
   },
   alerts: () => req('/api/v1/alerts'),
   alertDetail: (id: string) => req(`/api/v1/alerts/${id}`),
+  rules: () => req('/api/v1/rules'),
   sources: () => req('/api/v1/sources'),
   createSource: (name: string, source_type: string) =>
     req('/api/v1/sources', { method: 'POST', body: JSON.stringify({ name, source_type }) }),

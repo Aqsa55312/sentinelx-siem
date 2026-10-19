@@ -43,6 +43,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/events/{id}", withAuth(st, handleGetEvent))
 	mux.HandleFunc("GET /api/v1/alerts", withAuth(st, handleListAlerts))
 	mux.HandleFunc("GET /api/v1/alerts/{id}", withAuth(st, handleGetAlert))
+	mux.HandleFunc("GET /api/v1/rules", withAuth(st, handleListRules))
 
 	addr := os.Getenv("PORT")
 	if addr == "" {
@@ -143,7 +144,7 @@ func handleIngest(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {
 		body.SourceID = "source-demo-01"
 	}
 	accepted, rejected := st.Ingest(cl.OrgID, body.SourceID, body.Events)
-	fired := evaluateDET001(st, cl.OrgID, accepted)
+	fired := evaluateAll(st, cl.OrgID, accepted)
 	st.Audit(cl.OrgID, cl.UserID, "ingest.batch", body.SourceID, "ok", corrID(r))
 	writeJSON(w, 202, map[string]any{
 		"accepted": len(accepted), "rejected": rejected,
@@ -244,7 +245,7 @@ func handleUpload(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	accepted, rejectedSchema := st.Ingest(cl.OrgID, sourceID, raw)
-	fired := evaluateDET001(st, cl.OrgID, accepted)
+	fired := evaluateAll(st, cl.OrgID, accepted)
 	st.Audit(cl.OrgID, cl.UserID, "ingest.upload", sourceID, "ok", corrID(r))
 	writeJSON(w, 202, map[string]any{
 		"filename": hdr.Filename, "accepted": len(accepted),
@@ -265,6 +266,10 @@ func handleGetEvent(st Store, cl Claims, w http.ResponseWriter, r *http.Request)
 
 func handleListAlerts(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"alerts": st.ListAlerts(cl.OrgID)})
+}
+
+func handleListRules(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"rules": ruleRegistry()})
 }
 
 func handleGetAlert(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {

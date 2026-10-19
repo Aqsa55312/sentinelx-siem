@@ -79,5 +79,5 @@ func parseToken(tok string) (Claims, error) {
 }
 
 // canWrite gates ingestion/mutation endpoints. Read endpoints allow viewer+.
-func canWrite(role string) bool { return role == "admin" || role == "analyst" }
+func canWrite(role string) bool   { return role == "admin" || role == "analyst" }
 func canApprove(role string) bool { return role == "admin" || role == "responder" }

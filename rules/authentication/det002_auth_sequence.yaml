@@ -1,0 +1,18 @@
+id: DET-002
+name: suspicious authentication sequence
+version: 1
+enabled: true
+description: Repeated authentication failures followed by a success for the same username and src_ip.
+condition:
+  event_types: [authentication_failed, authentication_success]
+  group_by: [username, src_ip]
+  min_failures: 3
+  window_seconds: 600
+severity: high
+confidence: 85
+tests:
+  - TC-03: 4 failures then success, same user+IP => MUST alert
+  - success with no failures => MUST NOT alert
+  - failures below minimum => MUST NOT alert
+  - failures and success from different IPs => MUST NOT alert
+notes: A successful login after failures is suspicious, not proof of compromise.

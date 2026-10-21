@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api';
 import { fmtDateTime, timeAgo, titleCase } from '../lib/format';
 import { IconChevronDown, IconFile, IconSearch, IconUpload } from '../components/Icons';
+import Meta from '../components/Meta';
 
 type Preset = { src_ip?: string; event_type?: string; key: number };
 type Props = { refreshKey: number; preset?: Preset };
@@ -292,14 +293,5 @@ export default function Events({ refreshKey, preset }: Props) {
         </div>
       </div>
     </>
-  );
-}
-
-function Meta({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="meta-cell">
-      <div className="meta-label">{label}</div>
-      <div className="meta-value">{value}</div>
-    </div>
   );
 }

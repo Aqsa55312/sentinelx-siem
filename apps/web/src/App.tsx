@@ -169,14 +169,16 @@ export default function App() {
             <IconShield size={20} />
           </span>
           <div>
-            <div className="brand-name">SentinelX</div>
-            <div className="brand-sub">Security Ops</div>
+            <div className="brand-name">
+              Sentinel<span>X</span>
+            </div>
+            <div className="brand-sub">Operations desk</div>
           </div>
         </div>
 
         <nav className="nav" aria-label="Main navigation">
           <div className="nav-label">Workspace</div>
-          {TABS.map((t) => (
+          {TABS.map((t, index) => (
             <button
               key={t.id}
               className={`nav-item ${tab === t.id ? 'active' : ''}`}
@@ -184,8 +186,9 @@ export default function App() {
               title={t.label}
               aria-label={t.label}
             >
-              {t.icon}
-              <span>{t.label}</span>
+              <span className="nav-icon">{t.icon}</span>
+              <span className="nav-text">{t.label}</span>
+              <span className="nav-index">{String(index + 1).padStart(2, '0')}</span>
               {t.id === 'alerts' && counts.alerts > 0 && <span className="nav-count">{counts.alerts}</span>}
               {t.id === 'incidents' && counts.incidents > 0 && <span className="nav-count">{counts.incidents}</span>}
               {t.id === 'events' && counts.events > 0 && <span className="nav-count">{counts.events}</span>}
@@ -194,6 +197,9 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
+          <div className="sidebar-status">
+            <span className="status-beacon" /> local / in-memory
+          </div>
           <div className="user-line">
             <span className="avatar">{initials}</span>
             <div className="user-meta">
@@ -204,11 +210,19 @@ export default function App() {
               <IconLogout size={16} />
             </button>
           </div>
+          <div className="build-stamp">sentinelx / build 0.4.2</div>
         </div>
       </aside>
 
       <main className="main">
         <div className="main-inner">
+          <div className="workspace-rail" aria-hidden="true">
+            <span>SX / SecOps</span>
+            <span className="rail-line" />
+            <span>workspace: local</span>
+            <span>build 0.4.2</span>
+          </div>
+
           <header className="topbar">
             <div>
               <div className="page-eyebrow">

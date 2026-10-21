@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
-import { IconActivity, IconCheck, IconShield } from '../components/Icons';
+import { IconActivity, IconShield } from '../components/Icons';
 
 type Props = {
   onLogin: (token: string, role: string, email: string) => void;
@@ -35,24 +35,34 @@ export default function Login({ onLogin }: Props) {
   return (
     <div className="login-screen">
       <div className="login-card">
-        <div className="login-brand">
-          <div className="brand" style={{ padding: 0 }}>
-            <span className="brand-mark">
-              <IconShield size={20} />
-            </span>
-            <div>
-              <div className="brand-name">SentinelX</div>
-              <div className="brand-sub">Security Operations</div>
+        <section className="login-brand">
+          <div className="login-brand-top">
+            <div className="brand">
+              <span className="brand-mark">
+                <IconShield size={19} />
+              </span>
+              <div>
+                <div className="brand-name">
+                  Sentinel<span>X</span>
+                </div>
+                <div className="brand-sub">Operations desk</div>
+              </div>
             </div>
+            <span className="login-index">SX / 001</span>
           </div>
 
-          <div>
-            <div className="page-eyebrow" style={{ marginBottom: 10 }}>
-              <IconActivity size={14} /> Mini-SIEM · AI-assisted
+          <div className="login-hero">
+            <div className="page-eyebrow">
+              <IconActivity size={12} /> Mini-SIEM / rule-based detection
             </div>
-            <div className="login-tagline">Detect. Investigate. Respond.</div>
-            <p className="login-copy" style={{ marginTop: 10 }}>
-              Turn raw security logs into explainable alerts, evidence-backed investigations, and controlled response actions.
+            <h1 className="login-tagline">
+              See the signal.
+              <br />
+              <em>Trace the evidence.</em>
+            </h1>
+            <p className="login-copy">
+              Turn raw security logs into explainable alerts, evidence-backed investigations, and controlled response
+              actions.
             </p>
           </div>
 
@@ -61,21 +71,25 @@ export default function Login({ onLogin }: Props) {
               'Rule-based detection with per-alert evidence',
               'Tenant isolation and role-based access control',
               'Auditable actions — every alert traces to source events',
-            ].map((t) => (
+            ].map((t, index) => (
               <div className="login-point" key={t}>
-                <IconCheck size={16} />
+                <span className="point-index">{String(index + 1).padStart(2, '0')}</span>
                 <span>{t}</span>
               </div>
             ))}
           </div>
-        </div>
+
+          <div className="login-meta">
+            <span>local build · v0.4.2</span>
+            <span>tenant-isolated</span>
+          </div>
+        </section>
 
         <form className="login-form" onSubmit={submit}>
-          <div>
-            <h2>Sign in to console</h2>
-            <p className="muted small" style={{ marginTop: 4 }}>
-              Use a seeded demo account to explore the workspace.
-            </p>
+          <div className="login-form-head">
+            <div className="page-eyebrow">Console access</div>
+            <h2>Sign in</h2>
+            <p className="muted small">Use a seeded demo account to explore the workspace.</p>
           </div>
 
           <label className="field">
@@ -96,27 +110,31 @@ export default function Login({ onLogin }: Props) {
 
           {err && <div className="error-box">{err}</div>}
 
-          <button className="btn primary" type="submit" disabled={busy} style={{ width: '100%', padding: '11px 14px' }}>
-            {busy ? 'Signing in…' : 'Sign in'}
+          <button className="btn primary login-submit" type="submit" disabled={busy}>
+            <span>{busy ? 'Signing in…' : 'Sign in'}</span>
+            <span aria-hidden="true">→</span>
           </button>
 
-          <div className="login-sep">demo accounts</div>
-
-          <div className="chips">
-            {DEMO_ACCOUNTS.map((a) => (
-              <button
-                type="button"
-                key={a.email}
-                className="chip"
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setEmail(a.email);
-                  setPassword('password123');
-                }}
-              >
-                <b>{a.role}</b> · {a.email.split('@')[0]}
-              </button>
-            ))}
+          <div className="login-demo">
+            <div className="login-sep">demo accounts</div>
+            <div className="login-accounts">
+              {DEMO_ACCOUNTS.map((a) => (
+                <button
+                  type="button"
+                  key={a.email}
+                  className="demo-account"
+                  onClick={() => {
+                    setEmail(a.email);
+                    setPassword('password123');
+                  }}
+                >
+                  <span>
+                    <b>{a.role}</b>
+                    <small>{a.email}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <p className="login-hint">

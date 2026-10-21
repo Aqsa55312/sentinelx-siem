@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { fmtDateTime, riskLabel, riskTone, timeAgo, titleCase } from '../lib/format';
+import { fmtDateTime, riskTone, timeAgo, titleCase } from '../lib/format';
 import { IconArrowRight, IconBell, IconCase, IconClock, IconShield } from '../components/Icons';
+import Meta from '../components/Meta';
+import RiskMeter from '../components/RiskMeter';
 
 type Props = {
   refreshKey: number;
@@ -185,36 +187,7 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
                 </div>
               </div>
 
-              <div className="risk-meter">
-                <div className="risk-meter-top">
-                  <span className="risk-value">{detail.alert.risk_score}</span>
-                  <span className="muted small">/ 100</span>
-                  <span className="chip" style={{ marginLeft: 'auto' }}>
-                    {riskLabel(detail.alert.risk_score)}
-                  </span>
-                </div>
-                <div className="risk-track">
-                  <div
-                    className={`risk-fill ${riskTone(detail.alert.risk_score)}`}
-                    style={{
-                      width: `${Math.max(3, detail.alert.risk_score)}%`,
-                      background:
-                        riskTone(detail.alert.risk_score) === 'critical'
-                          ? 'linear-gradient(90deg,#ff5c7c,#d62c50)'
-                          : riskTone(detail.alert.risk_score) === 'high'
-                          ? 'linear-gradient(90deg,#ffab6b,#e97a22)'
-                          : riskTone(detail.alert.risk_score) === 'medium'
-                          ? 'linear-gradient(90deg,#ffd76a,#d8a51c)'
-                          : 'linear-gradient(90deg,#7fd0ff,#2a8fd0)',
-                    }}
-                  />
-                </div>
-                <div className="risk-scale">
-                  <span>0 · informational</span>
-                  <span>50 · medium</span>
-                  <span>100 · critical</span>
-                </div>
-              </div>
+              <RiskMeter score={detail.alert.risk_score} />
 
               <div className="detail-actions">
                 <span className="section-label" style={{ margin: 0 }}>Triage</span>
@@ -312,14 +285,5 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
         </section>
       </div>
     </>
-  );
-}
-
-function Meta({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="meta-cell">
-      <div className="meta-label">{label}</div>
-      <div className="meta-value">{value}</div>
-    </div>
   );
 }

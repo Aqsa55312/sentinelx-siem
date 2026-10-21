@@ -92,28 +92,24 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
           label="Total events"
           value={data ? data.total_events : '—'}
           foot="Normalized and searchable"
-          glow="rgba(91,147,255,.18)"
         />
         <Kpi
           icon={<IconBell size={17} />}
           label="Total alerts"
           value={data ? data.total_alerts ?? alerts.length : '—'}
           foot="Rule detections, all severities"
-          glow="rgba(251,146,60,.16)"
         />
         <Kpi
           icon={<IconAlert size={17} />}
           label="Active incidents"
           value={data ? data.active_incidents : '—'}
           foot={data ? `${data.active_alerts ?? 0} active alerts` : '—'}
-          glow="rgba(251,77,109,.16)"
         />
         <Kpi
           icon={<IconDatabase size={17} />}
           label="Log sources"
           value={data ? sources.length : '—'}
           foot={data ? `${healthy}/${sources.length} healthy` : '—'}
-          glow="rgba(52,211,153,.15)"
         />
       </div>
 
@@ -325,19 +321,17 @@ function Kpi({
   label,
   value,
   foot,
-  glow,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   foot: string;
-  glow: string;
 }) {
   return (
-    <div className="kpi" style={{ '--glow': glow } as React.CSSProperties}>
+    <div className="kpi">
       <div className="kpi-top">
-        <span className="kpi-icon">{icon}</span>
         <span className="kpi-label">{label}</span>
+        <span className="kpi-icon">{icon}</span>
       </div>
       <div className="kpi-value">{value}</div>
       <div className="kpi-foot">{foot}</div>

@@ -86,6 +86,19 @@ func TestCorrelateAlerts_DoesNotReuseClosedIncident(t *testing.T) {
 	}
 }
 
+func TestCreateIncident_RejectsPartiallyLinkedAlerts(t *testing.T) {
+	st := NewMemoryStore()
+	a1 := seedAlert(t, st, "192.0.2.66", "demo-user")
+	a2 := seedAlert(t, st, "192.0.2.67", "demo-user")
+
+	if _, err := st.CreateIncident("org-demo-01", "user-analyst-01", []string{a1.ID}, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateIncident("org-demo-01", "user-analyst-01", []string{a1.ID, a2.ID}, "", ""); err == nil {
+		t.Fatal("creating an incident from a partially linked alert set must fail")
+	}
+}
+
 func TestContainedIncident_StaysOpenButDoesNotCorrelate(t *testing.T) {
 	st := NewMemoryStore()
 	a1 := seedAlert(t, st, "192.0.2.55", "demo-user")

@@ -100,12 +100,14 @@ func (s *MemoryStore) CreateIncident(orgID, actor string, alertIDs []string, tit
 
 	// Idempotent when every alert already belongs to the same incident.
 	existing := map[string]string{}
+	linked := 0
 	for _, aid := range alertIDs {
 		if iid := s.alertIncident[aid]; iid != "" {
 			existing[iid] = iid
+			linked++
 		}
 	}
-	if len(existing) == 1 {
+	if linked == len(alertIDs) && len(existing) == 1 {
 		for iid := range existing {
 			if inc, ok := s.incidentByIDLocked(orgID, iid); ok {
 				inc.AlertCount = len(s.incidentAlerts[iid])

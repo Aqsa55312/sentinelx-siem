@@ -2,7 +2,7 @@
 
 Operational companion to the README. Tracks what is actually implemented and how to run/verify it.
 
-**Last verified:** 21 October 2026 · `go test` 28/28 · `npm run build` OK
+**Last verified:** 21 October 2026 · `go test` 29/29 · `npm run build` OK
 
 ## Implemented
 

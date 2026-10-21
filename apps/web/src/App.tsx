@@ -1,351 +1,270 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import Login from './pages/Login';
+import Overview from './pages/Overview';
+import Events from './pages/Events';
+import Alerts from './pages/Alerts';
+import Incidents from './pages/Incidents';
+import Rules from './pages/Rules';
+import Sources from './pages/Sources';
+import {
+  IconActivity,
+  IconBell,
+  IconCase,
+  IconDatabase,
+  IconGrid,
+  IconList,
+  IconLogout,
+  IconRefresh,
+  IconShield,
+  IconSliders,
+} from './components/Icons';
 
-type Tab = 'overview' | 'events' | 'alerts' | 'rules' | 'sources';
+type Tab = 'overview' | 'events' | 'alerts' | 'incidents' | 'rules' | 'sources';
+
+type Session = { token: string; role: string; email: string };
+
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'overview', label: 'Overview', icon: <IconGrid size={17} /> },
+  { id: 'events', label: 'Event Explorer', icon: <IconList size={17} /> },
+  { id: 'alerts', label: 'Alerts', icon: <IconBell size={17} /> },
+  { id: 'incidents', label: 'Incidents', icon: <IconCase size={17} /> },
+  { id: 'rules', label: 'Detection Rules', icon: <IconSliders size={17} /> },
+  { id: 'sources', label: 'Log Sources', icon: <IconDatabase size={17} /> },
+];
+
+const PAGE_META: Record<Tab, { eyebrow: string; title: string; sub: string }> = {
+  overview: {
+    eyebrow: 'Security posture',
+    title: 'Overview',
+    sub: 'Live view of ingestion, detections, and source health across your workspace.',
+  },
+  events: {
+    eyebrow: 'Telemetry',
+    title: 'Event Explorer',
+    sub: 'Search normalized events, pivot on indicators, and upload log batches for detection.',
+  },
+  alerts: {
+    eyebrow: 'Detection',
+    title: 'Alerts',
+    sub: 'Every detection carries its rule version, risk reasoning, and the events that triggered it.',
+  },
+  incidents: {
+    eyebrow: 'Response',
+    title: 'Incidents',
+    sub: 'Correlated detections, investigation notes, and an audit-logged status workflow from triage to closure.',
+  },
+  rules: {
+    eyebrow: 'Detection engineering',
+    title: 'Detection Rules',
+    sub: 'Rule registry with thresholds, windows, and verified positive/negative test cases.',
+  },
+  sources: {
+    eyebrow: 'Ingestion',
+    title: 'Log Sources',
+    sub: 'Track where telemetry comes from and keep ingestion health visible.',
+  },
+};
+
+function loadSession(): Session | null {
+  const token = localStorage.getItem('sx_token');
+  if (!token) return null;
+  return {
+    token,
+    role: localStorage.getItem('sx_role') ?? 'analyst',
+    email: localStorage.getItem('sx_email') ?? 'user@sentinelx.local',
+  };
+}
+
+// Deep links are handy for demos and screenshots: /?tab=incidents.
+function tabFromLocation(): Tab {
+  const wanted = new URLSearchParams(window.location.search).get('tab') ?? window.location.hash.replace('#', '');
+  const found = TABS.find((t) => t.id === wanted);
+  return found ? found.id : 'overview';
+}
 
 export default function App() {
-  const [tok, setTok] = useState<string | null>(localStorage.getItem('sx_token'));
-  const [tab, setTab] = useState<Tab>('overview');
-  const [email, setEmail] = useState('admin@sentinelx.local');
-  const [password, setPassword] = useState('password123');
-  const [err, setErr] = useState('');
+  const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [tab, setTab] = useState<Tab>(() => tabFromLocation());
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [counts, setCounts] = useState<{ alerts: number; events: number; incidents: number }>({
+    alerts: 0,
+    events: 0,
+    incidents: 0,
+  });
+  const [alertFocus, setAlertFocus] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('alert'),
+  );
+  const [incidentFocus, setIncidentFocus] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('incident'),
+  );
+  const [eventPreset, setEventPreset] = useState<{ src_ip?: string; event_type?: string; key: number } | undefined>();
 
-  async function doLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setErr('');
-    try {
-      const r = await api.login(email, password);
-      localStorage.setItem('sx_token', r.token);
-      setTok(r.token);
-    } catch (e: any) {
-      setErr(e.message);
-    }
+  useEffect(() => {
+    if (!session) return;
+    api
+      .overview()
+      .then((ov) =>
+        setCounts({
+          alerts: ov.total_alerts ?? 0,
+          events: ov.total_events ?? 0,
+          incidents: ov.active_incidents ?? 0,
+        }),
+      )
+      .catch(() => undefined);
+  }, [session, refreshKey]);
+
+  function onLogin(token: string, role: string, email: string) {
+    localStorage.setItem('sx_token', token);
+    localStorage.setItem('sx_role', role);
+    localStorage.setItem('sx_email', email);
+    setSession({ token, role, email });
+    setTab('overview');
+    setRefreshKey((k) => k + 1);
   }
 
-  if (!tok) {
-    return (
-      <div className="wrap center">
-        <div className="card login">
-          <h1>SentinelX</h1>
-          <p className="muted">Mini-SIEM · AI-assisted investigation (slice 1)</p>
-          <form onSubmit={doLogin}>
-            <label>Email<input value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-            <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-            {err && <div className="error">{err}</div>}
-            <button type="submit">Login</button>
-          </form>
-          <p className="muted small">Dev seed: admin@sentinelx.local / password123</p>
-        </div>
-      </div>
-    );
+  function logout() {
+    localStorage.removeItem('sx_token');
+    localStorage.removeItem('sx_role');
+    localStorage.removeItem('sx_email');
+    setSession(null);
+    setAlertFocus(null);
+    setIncidentFocus(null);
+    setEventPreset(undefined);
   }
+
+  if (!session) return <Login onLogin={onLogin} />;
+
+  const meta = PAGE_META[tab];
+  const initials = session.email.slice(0, 2).toUpperCase();
+
+  function openAlert(id: string) {
+    setAlertFocus(id);
+    setTab('alerts');
+  }
+
+  function goTab(id: Tab) {
+    if (id === 'alerts') setAlertFocus(null);
+    if (id === 'incidents') setIncidentFocus(null);
+    setTab(id);
+  }
+
+  function openIncident(id: string) {
+    setIncidentFocus(id);
+    setTab('incidents');
+  }
+
+  function viewEvents(srcIp: string) {
+    setEventPreset({ src_ip: srcIp, key: Date.now() });
+    setTab('events');
+  }
+
+  const canWrite = session.role === 'admin' || session.role === 'analyst';
 
   return (
-    <div className="wrap">
-      <header className="topbar">
-        <strong>SentinelX</strong>
-        <nav>
-          {(['overview', 'events', 'alerts', 'rules', 'sources'] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-              {t}
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark">
+            <IconShield size={20} />
+          </span>
+          <div>
+            <div className="brand-name">SentinelX</div>
+            <div className="brand-sub">Security Ops</div>
+          </div>
+        </div>
+
+        <nav className="nav" aria-label="Main navigation">
+          <div className="nav-label">Workspace</div>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`nav-item ${tab === t.id ? 'active' : ''}`}
+              onClick={() => goTab(t.id)}
+              title={t.label}
+              aria-label={t.label}
+            >
+              {t.icon}
+              <span>{t.label}</span>
+              {t.id === 'alerts' && counts.alerts > 0 && <span className="nav-count">{counts.alerts}</span>}
+              {t.id === 'incidents' && counts.incidents > 0 && <span className="nav-count">{counts.incidents}</span>}
+              {t.id === 'events' && counts.events > 0 && <span className="nav-count">{counts.events}</span>}
             </button>
           ))}
         </nav>
-        <button
-          className="ghost"
-          onClick={() => {
-            localStorage.removeItem('sx_token');
-            setTok(null);
-          }}
-        >
-          Logout
-        </button>
-      </header>
-      {tab === 'overview' && <Overview />}
-      {tab === 'events' && <Events />}
-      {tab === 'alerts' && <Alerts />}
-      {tab === 'rules' && <Rules />}
-      {tab === 'sources' && <Sources />}
-    </div>
-  );
-}
 
-function Overview() {
-  const [data, setData] = useState<any>(null);
-  const [err, setErr] = useState('');
-  useEffect(() => {
-    api.overview().then(setData).catch((e: any) => setErr(e.message));
-  }, []);
-  if (err) return <div className="error">{err}</div>;
-  if (!data) return <p className="muted">Loading…</p>;
-  return (
-    <div className="grid">
-      <div className="card">
-        <h3>Total events</h3>
-        <div className="big">{data.total_events ?? 0}</div>
-      </div>
-      <div className="card">
-        <h3>Alerts by severity</h3>
-        <pre>{JSON.stringify(data.alerts_by_severity ?? {}, null, 2)}</pre>
-      </div>
-      <div className="card">
-        <h3>Ingestion</h3>
-        <pre>{JSON.stringify({ ingested: data.ingested, rejected: data.rejected }, null, 2)}</pre>
-      </div>
-      <div className="card">
-        <h3>Sources</h3>
-        <pre>{JSON.stringify(data.sources ?? [], null, 2)}</pre>
-      </div>
-      <div className="card">
-        <h3>Top detection rules</h3>
-        <pre>{JSON.stringify(data.alerts_by_rule ?? {}, null, 2)}</pre>
-      </div>
-      <div className="card">
-        <h3>Active alerts</h3>
-        <div className="big">{data.active_incidents ?? 0}</div>
-        <p className="muted small">new + triaged + investigating</p>
-      </div>
-    </div>
-  );
-}
-
-function Events() {
-  const [events, setEvents] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [ip, setIp] = useState('');
-  const [etype, setEtype] = useState('');
-  const [username, setUsername] = useState('');
-  const [offset, setOffset] = useState(0);
-  const [err, setErr] = useState('');
-  const [uploadMsg, setUploadMsg] = useState('');
-  const limit = 10;
-
-  async function load(off = offset) {
-    setErr('');
-    try {
-      const params: Record<string, string> = { limit: String(limit), offset: String(off) };
-      if (ip) params.src_ip = ip;
-      if (etype) params.event_type = etype;
-      if (username) params.username = username;
-      const r = await api.events(params);
-      setEvents(r.events ?? []);
-      setTotal(r.total ?? 0);
-      setOffset(off);
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-  useEffect(() => {
-    load(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setUploadMsg('');
-    try {
-      const r = await api.upload(f, 'source-demo-01');
-      setUploadMsg(`Uploaded ${f.name}: ${r.accepted} accepted, ${r.rejected_parse + r.rejected_schema} rejected, ${r.alerts_fired} alerts`);
-      load(0);
-    } catch (err: any) {
-      setUploadMsg('Upload failed: ' + err.message);
-    }
-    e.target.value = '';
-  }
-
-  const pages = Math.max(1, Math.ceil(total / limit));
-  const page = Math.floor(offset / limit) + 1;
-
-  return (
-    <div className="card">
-      <h3>Event Explorer</h3>
-      <div className="row">
-        <input placeholder="src_ip, e.g. 192.0.2.10" value={ip} onChange={(e) => setIp(e.target.value)} />
-        <input placeholder="event_type" value={etype} onChange={(e) => setEtype(e.target.value)} />
-        <input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <button onClick={() => load(0)}>Search</button>
-      </div>
-      <div className="row">
-        <label className="muted small">Upload .jsonl/.json (max 10MB)
-          <input type="file" accept=".jsonl,.json" onChange={onUpload} />
-        </label>
-      </div>
-      {uploadMsg && <p className="muted small">{uploadMsg}</p>}
-      {err && <div className="error">{err}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>timestamp</th>
-            <th>type</th>
-            <th>src_ip</th>
-            <th>user</th>
-            <th>message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((e: any) => (
-            <tr key={e.event_id}>
-              <td className="mono">{e.timestamp}</td>
-              <td>{e.event_type}</td>
-              <td className="mono">{e.src_ip}</td>
-              <td>{e.username}</td>
-              <td>{e.message}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="row" style={{ marginTop: 12 }}>
-        <button disabled={offset === 0} onClick={() => load(offset - limit)}>Prev</button>
-        <span className="muted small">page {page}/{pages} · total {total}</span>
-        <button disabled={offset + limit >= total} onClick={() => load(offset + limit)}>Next</button>
-      </div>
-      {events.length === 0 && <p className="muted">No events. Ingest a fixture or upload a file first.</p>}
-    </div>
-  );
-}
-
-function Rules() {
-  const [rules, setRules] = useState<any[]>([]);
-  const [err, setErr] = useState('');
-  useEffect(() => {
-    api.rules().then((r) => setRules(r.rules ?? [])).catch((e: any) => setErr(e.message));
-  }, []);
-  return (
-    <div className="card">
-      <h3>Detection Rules</h3>
-      <p className="muted small">Read-only registry. Every rule has positive and negative test cases in `apps/api/*_test.go`.</p>
-      {err && <div className="error">{err}</div>}
-      {rules.map((r: any) => (
-        <div key={r.rule_id} className="card" style={{ background: '#0e1830' }}>
-          <div className="row" style={{ alignItems: 'center' }}>
-            <strong>{r.name}</strong>
-            <span className={`sev ${r.severity}`}>{r.severity}</span>
-            <span className="muted mono">v{r.version} · {r.enabled ? 'enabled' : 'disabled'}</span>
+        <div className="sidebar-footer">
+          <div className="user-line">
+            <span className="avatar">{initials}</span>
+            <div className="user-meta">
+              <div className="user-name">{session.email.split('@')[0]}</div>
+              <div className="user-role">{session.role}</div>
+            </div>
+            <button className="btn ghost icon-only" onClick={logout} title="Sign out" aria-label="Sign out">
+              <IconLogout size={16} />
+            </button>
           </div>
-          <p className="muted small">{r.description}</p>
-          <pre>{JSON.stringify(r.config, null, 2)}</pre>
-          <h4>Tests</h4>
-          <ul className="small">
-            {(r.test_cases ?? []).map((t: string, i: number) => <li key={i}>{t}</li>)}
-          </ul>
         </div>
-      ))}
-    </div>
-  );
-}
+      </aside>
 
-function Sources() {
-  const [sources, setSources] = useState<any[]>([]);
-  const [name, setName] = useState('');
-  const [stype, setStype] = useState('simulator');
-  const [err, setErr] = useState('');
-  async function load() {
-    try {
-      const r = await api.sources();
-      setSources(r.sources ?? []);
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-  useEffect(() => {
-    load();
-  }, []);
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    setErr('');
-    try {
-      await api.createSource(name, stype);
-      setName('');
-      load();
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-  return (
-    <div className="card">
-      <h3>Log Sources</h3>
-      {err && <div className="error">{err}</div>}
-      <table>
-        <thead>
-          <tr><th>id</th><th>name</th><th>type</th><th>status</th></tr>
-        </thead>
-        <tbody>
-          {sources.map((s: any) => (
-            <tr key={s.source_id}>
-              <td className="mono">{s.source_id}</td>
-              <td>{s.name}</td>
-              <td>{s.source_type}</td>
-              <td>{s.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <form onSubmit={create} className="row" style={{ marginTop: 12 }}>
-        <input placeholder="new source name" value={name} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="type" value={stype} onChange={(e) => setStype(e.target.value)} />
-        <button type="submit">Add source</button>
-      </form>
-      <p className="muted small">Types: simulator, auth, web, api, host, cloud. Requires analyst/admin role.</p>
-    </div>
-  );
-}
+      <main className="main">
+        <div className="main-inner">
+          <header className="topbar">
+            <div>
+              <div className="page-eyebrow">
+                <IconActivity size={13} /> {meta.eyebrow}
+              </div>
+              <h1 className="page-title">{meta.title}</h1>
+              <p className="page-sub">{meta.sub}</p>
+            </div>
+            <div className="topbar-actions">
+              <span className="live-pill">
+                <span className="live-dot" /> Live
+              </span>
+              <button className="btn" onClick={() => setRefreshKey((k) => k + 1)}>
+                <IconRefresh size={15} /> Refresh
+              </button>
+            </div>
+          </header>
 
-function Alerts() {
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [sel, setSel] = useState<any>(null);
-  const [err, setErr] = useState('');
-  useEffect(() => {
-    api.alerts().then((r) => setAlerts(r.alerts ?? [])).catch((e: any) => setErr(e.message));
-  }, []);
-  async function open(id: string) {
-    try {
-      const r = await api.alertDetail(id);
-      setSel(r);
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  }
-  return (
-    <div className="grid2">
-      <div className="card">
-        <h3>Alerts</h3>
-        {err && <div className="error">{err}</div>}
-        {alerts.map((a: any) => (
-          <div key={a.alert_id} className="alertrow" onClick={() => open(a.alert_id)}>
-            <span className={`sev ${a.severity}`}>{a.severity}</span>
-            <span>{a.title}</span>
-            <span className="mono muted">risk {a.risk_score}</span>
-          </div>
-        ))}
-        {alerts.length === 0 && <p className="muted">No alerts yet.</p>}
-      </div>
-      <div className="card">
-        <h3>Alert detail + evidence</h3>
-        {!sel && <p className="muted">Select an alert.</p>}
-        {sel && (
-          <>
-            <p><strong>{sel.alert.title}</strong></p>
-            <p className="muted small">{sel.alert.reason}</p>
-            <p className="mono small">rule {sel.alert.rule_id} v{sel.alert.rule_version}</p>
-            <h4>Evidence ({sel.evidence?.length ?? 0})</h4>
-            <table>
-              <thead>
-                <tr><th>timestamp</th><th>event</th><th>src_ip</th></tr>
-              </thead>
-              <tbody>
-                {(sel.evidence ?? []).map((e: any) => (
-                  <tr key={e.event_id}>
-                    <td className="mono">{e.timestamp}</td>
-                    <td>{e.event_type}</td>
-                    <td className="mono">{e.src_ip}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-      </div>
+          {tab === 'overview' && (
+            <Overview
+              refreshKey={refreshKey}
+              onOpenAlert={openAlert}
+              onOpenIncident={openIncident}
+              onViewAllAlerts={() => {
+                setAlertFocus(null);
+                setTab('alerts');
+              }}
+              onViewAllIncidents={() => {
+                setIncidentFocus(null);
+                setTab('incidents');
+              }}
+            />
+          )}
+          {tab === 'events' && <Events refreshKey={refreshKey} preset={eventPreset} />}
+          {tab === 'alerts' && (
+            <Alerts
+              refreshKey={refreshKey}
+              focusId={alertFocus}
+              canWrite={canWrite}
+              onViewEvents={viewEvents}
+              onOpenIncident={openIncident}
+            />
+          )}
+          {tab === 'incidents' && (
+            <Incidents
+              refreshKey={refreshKey}
+              focusId={incidentFocus}
+              canWrite={canWrite}
+              onOpenAlert={openAlert}
+              onViewEvents={viewEvents}
+            />
+          )}
+          {tab === 'rules' && <Rules refreshKey={refreshKey} />}
+          {tab === 'sources' && <Sources refreshKey={refreshKey} />}
+        </div>
+      </main>
     </div>
   );
 }

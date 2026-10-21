@@ -74,14 +74,14 @@ func TestSources_CRUDIsolated(t *testing.T) {
 	if got := st.ListSources("org-demo-01"); len(got) != 1 {
 		t.Fatalf("seed sources: %d", len(got))
 	}
-	src, err := st.CreateSource("org-demo-01", "web-01", "web")
+	src, err := st.CreateSource("org-demo-01", "web-01", "web", 50)
 	if err != nil || src.ID == "" {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := st.CreateSource("org-demo-01", "  ", "web"); err == nil {
+	if _, err := st.CreateSource("org-demo-01", "  ", "web", 50); err == nil {
 		t.Fatal("empty name must fail")
 	}
-	if _, err := st.CreateSource("org-demo-01", "x", "firewall"); err == nil {
+	if _, err := st.CreateSource("org-demo-01", "x", "firewall", 50); err == nil {
 		t.Fatal("unknown type must fail")
 	}
 	if got := st.ListSources("org-other"); len(got) != 0 {

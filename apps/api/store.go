@@ -30,20 +30,22 @@ type Event struct {
 }
 
 type Alert struct {
-	ID          string     `json:"alert_id"`
-	OrgID       string     `json:"-"`
-	RuleID      string     `json:"rule_id"`
-	RuleVersion int        `json:"rule_version"`
-	Title       string     `json:"title"`
-	Severity    string     `json:"severity"`
-	RiskScore   int        `json:"risk_score"`
-	Status      string     `json:"status"`
-	WindowStart *time.Time `json:"window_start,omitempty"`
-	WindowEnd   *time.Time `json:"window_end,omitempty"`
-	Reason      string     `json:"reason"`
-	DedupeKey   string     `json:"-"`
-	CreatedAt   time.Time  `json:"created_at"`
-	EventIDs    []string   `json:"event_ids"`
+	ID           string     `json:"alert_id"`
+	OrgID        string     `json:"-"`
+	RuleID       string     `json:"rule_id"`
+	RuleVersion  int        `json:"rule_version"`
+	Title        string     `json:"title"`
+	Severity     string     `json:"severity"`
+	RiskScore    int        `json:"risk_score"`
+	Status       string     `json:"status"`
+	StatusReason string     `json:"status_reason,omitempty"`
+	IncidentID   string     `json:"incident_id,omitempty"`
+	WindowStart  *time.Time `json:"window_start,omitempty"`
+	WindowEnd    *time.Time `json:"window_end,omitempty"`
+	Reason       string     `json:"reason"`
+	DedupeKey    string     `json:"-"`
+	CreatedAt    time.Time  `json:"created_at"`
+	EventIDs     []string   `json:"event_ids"`
 }
 
 type User struct {
@@ -154,11 +156,12 @@ func strField(m map[string]any, k string) string {
 // ---------- Store interface ----------
 
 type Source struct {
-	ID     string `json:"source_id"`
-	OrgID  string `json:"-"`
-	Name   string `json:"name"`
-	Type   string `json:"source_type"`
-	Status string `json:"status"`
+	ID          string `json:"source_id"`
+	OrgID       string `json:"-"`
+	Name        string `json:"name"`
+	Type        string `json:"source_type"`
+	Status      string `json:"status"`
+	Criticality int    `json:"criticality"`
 }
 
 // EventFilter carries explorer filters; zero values mean "no filter".
@@ -197,18 +200,27 @@ func (f EventFilter) matches(e Event) bool {
 
 type Store interface {
 	Login(email, password string) (User, error)
+	ListUsers(orgID string) []UserSummary
 	ListEvents(orgID string, f EventFilter, limit, offset int) (events []Event, total int)
 	EventsInWindow(orgID string, f EventFilter, from, to time.Time) []Event
 	GetEvent(orgID, id string) (Event, bool)
 	Ingest(orgID, sourceID string, raw []map[string]any) (accepted []Event, rejected int)
 	ListAlerts(orgID string) []Alert
 	GetAlert(orgID, id string) (Alert, []Event, bool)
+	UpdateAlertStatus(orgID, id, status, actor, reason string) (Alert, error)
 	Overview(orgID string) map[string]any
 	CountFailures(orgID, srcIP string, since time.Time) []Event
 	CreateAlert(a Alert) Alert
 	HasRecentAlert(orgID, ruleID, dedupeKey string, since time.Time) bool
 	ListSources(orgID string) []Source
-	CreateSource(orgID, name, typ string) (Source, error)
+	CreateSource(orgID, name, typ string, criticality int) (Source, error)
+	Criticality(orgID, sourceID string) int
+	ListIncidents(orgID string) []Incident
+	GetIncident(orgID, id string) (IncidentDetail, bool)
+	CreateIncident(orgID, actor string, alertIDs []string, title, assignee string) (Incident, error)
+	AttachAlertsToIncident(orgID, id, actor string, alertIDs []string) (Incident, error)
+	UpdateIncident(orgID, id, actor string, patch IncidentPatch) (Incident, error)
+	AddIncidentNote(orgID, id, actor, body string) (IncidentNote, error)
 	Audit(orgID, actor, action, target, result, corrID string)
 	AuditCount() int
 }
@@ -226,15 +238,25 @@ type MemoryStore struct {
 	ingested  int
 	rejected  int
 	idemCache map[string]bool
+
+	incidents        []Incident
+	incidentAlerts   map[string][]string // incident ID -> alert IDs
+	alertIncident    map[string]string   // alert ID -> incident ID
+	incidentNotes    []IncidentNote
+	incidentTimeline []IncidentTimelineEntry
 }
 
 func NewMemoryStore() *MemoryStore {
-	s := &MemoryStore{users: map[string]User{}, eventsBy: map[string]Event{}, idemCache: map[string]bool{}}
+	s := &MemoryStore{
+		users: map[string]User{}, eventsBy: map[string]Event{}, idemCache: map[string]bool{},
+		incidentAlerts: map[string][]string{}, alertIncident: map[string]string{},
+	}
 	adminHash, _ := hashPassword("password123")
 	s.users["admin@sentinelx.local"] = User{ID: "user-admin-01", Email: "admin@sentinelx.local", Hash: adminHash, OrgID: "org-demo-01", Role: "admin"}
 	s.users["analyst@sentinelx.local"] = User{ID: "user-analyst-01", Email: "analyst@sentinelx.local", Hash: adminHash, OrgID: "org-demo-01", Role: "analyst"}
+	s.users["responder@sentinelx.local"] = User{ID: "user-responder-01", Email: "responder@sentinelx.local", Hash: adminHash, OrgID: "org-demo-01", Role: "responder"}
 	s.users["viewer@sentinelx.local"] = User{ID: "user-viewer-01", Email: "viewer@sentinelx.local", Hash: adminHash, OrgID: "org-demo-01", Role: "viewer"}
-	s.sources = []Source{{ID: "source-demo-01", OrgID: "org-demo-01", Name: "demo-linux-01", Type: "simulator", Status: "healthy"}}
+	s.sources = []Source{{ID: "source-demo-01", OrgID: "org-demo-01", Name: "demo-linux-01", Type: "simulator", Status: "healthy", Criticality: 70}}
 	return s
 }
 
@@ -348,7 +370,9 @@ func (s *MemoryStore) ListAlerts(orgID string) []Alert {
 	var out []Alert
 	for i := len(s.alerts) - 1; i >= 0; i-- {
 		if s.alerts[i].OrgID == orgID {
-			out = append(out, s.alerts[i])
+			a := s.alerts[i]
+			a.IncidentID = s.alertIncident[a.ID]
+			out = append(out, a)
 		}
 	}
 	return out
@@ -359,6 +383,7 @@ func (s *MemoryStore) GetAlert(orgID, id string) (Alert, []Event, bool) {
 	defer s.mu.Unlock()
 	for _, a := range s.alerts {
 		if a.ID == id && a.OrgID == orgID {
+			a.IncidentID = s.alertIncident[a.ID]
 			var evs []Event
 			for _, eid := range a.EventIDs {
 				if e, ok := s.eventsBy[eid]; ok {
@@ -371,20 +396,47 @@ func (s *MemoryStore) GetAlert(orgID, id string) (Alert, []Event, bool) {
 	return Alert{}, nil, false
 }
 
+func (s *MemoryStore) UpdateAlertStatus(orgID, id, status, actor, reason string) (Alert, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch status {
+	case "new", "triaged", "investigating", "resolved", "closed", "false_positive":
+	default:
+		return Alert{}, fmt.Errorf("unsupported alert status")
+	}
+	if (status == "false_positive" || status == "closed") && strings.TrimSpace(reason) == "" {
+		return Alert{}, fmt.Errorf("reason is required for %s", status)
+	}
+	for i := range s.alerts {
+		if s.alerts[i].ID != id || s.alerts[i].OrgID != orgID {
+			continue
+		}
+		s.alerts[i].Status = status
+		s.alerts[i].StatusReason = strings.TrimSpace(reason)
+		a := s.alerts[i]
+		a.IncidentID = s.alertIncident[a.ID]
+		s.audits++
+		return a, nil
+	}
+	return Alert{}, fmt.Errorf("alert not found")
+}
+
 func (s *MemoryStore) Overview(orgID string) map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	bySev := map[string]int{}
 	byRule := map[string]int{}
-	active := 0
+	totalAlerts := 0
+	activeAlerts := 0
 	for _, a := range s.alerts {
 		if a.OrgID != orgID {
 			continue
 		}
+		totalAlerts++
 		bySev[a.Severity]++
 		byRule[a.RuleID]++
 		if a.Status == "new" || a.Status == "triaged" || a.Status == "investigating" {
-			active++
+			activeAlerts++
 		}
 	}
 	n := 0
@@ -393,10 +445,23 @@ func (s *MemoryStore) Overview(orgID string) map[string]any {
 			n++
 		}
 	}
+	totalIncidents := 0
+	activeIncidents := 0
+	for _, inc := range s.incidents {
+		if inc.OrgID != orgID {
+			continue
+		}
+		totalIncidents++
+		if incidentOpenStatuses[inc.Status] {
+			activeIncidents++
+		}
+	}
 	return map[string]any{
 		"organization_id": orgID, "total_events": n,
-		"total_alerts":       len(bySevList(s.alerts, orgID)),
-		"active_incidents":   active,
+		"total_alerts":       totalAlerts,
+		"active_alerts":      activeAlerts,
+		"total_incidents":    totalIncidents,
+		"active_incidents":   activeIncidents,
 		"alerts_by_severity": bySev,
 		"alerts_by_rule":     byRule,
 		"ingested":           s.ingested, "rejected": s.rejected,
@@ -420,7 +485,7 @@ func (s *MemoryStore) ListSources(orgID string) []Source {
 	return s.sourcesFor(orgID)
 }
 
-func (s *MemoryStore) CreateSource(orgID, name, typ string) (Source, error) {
+func (s *MemoryStore) CreateSource(orgID, name, typ string, criticality int) (Source, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	name = strings.TrimSpace(name)
@@ -435,7 +500,10 @@ func (s *MemoryStore) CreateSource(orgID, name, typ string) (Source, error) {
 	default:
 		return Source{}, fmt.Errorf("unsupported source_type")
 	}
-	src := Source{ID: newID("source"), OrgID: orgID, Name: name, Type: typ, Status: "healthy"}
+	if criticality < 0 || criticality > 100 {
+		return Source{}, fmt.Errorf("criticality must be 0..100")
+	}
+	src := Source{ID: newID("source"), OrgID: orgID, Name: name, Type: typ, Status: "healthy", Criticality: criticality}
 	s.sources = append(s.sources, src)
 	s.audits++
 	return src, nil
@@ -664,7 +732,10 @@ func (p *PostgresStore) GetEvent(orgID, id string) (Event, bool) {
 }
 
 func (p *PostgresStore) ListAlerts(orgID string) []Alert {
-	rows, err := p.db.Query(`SELECT id, organization_id, rule_id, rule_version, title, severity, risk_score, status, window_start, window_end, reason, created_at FROM alerts WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 200`, orgID)
+	rows, err := p.db.Query(`SELECT id, organization_id, rule_id, rule_version, title, severity, risk_score, status,
+		coalesce(status_reason,''), window_start, window_end, reason, created_at,
+		coalesce((SELECT incident_id FROM incident_alerts ia WHERE ia.alert_id=alerts.id LIMIT 1),'')
+		FROM alerts WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 200`, orgID)
 	if err != nil {
 		return nil
 	}
@@ -674,7 +745,8 @@ func (p *PostgresStore) ListAlerts(orgID string) []Alert {
 		var a Alert
 		var ws, we sql.NullTime
 		var rule sql.NullString
-		if err := rows.Scan(&a.ID, &a.OrgID, &rule, &a.RuleVersion, &a.Title, &a.Severity, &a.RiskScore, &a.Status, &ws, &we, &a.Reason, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.OrgID, &rule, &a.RuleVersion, &a.Title, &a.Severity, &a.RiskScore, &a.Status,
+			&a.StatusReason, &ws, &we, &a.Reason, &a.CreatedAt, &a.IncidentID); err != nil {
 			continue
 		}
 		a.RuleID = rule.String
@@ -700,8 +772,12 @@ func (p *PostgresStore) GetAlert(orgID, id string) (Alert, []Event, bool) {
 	var a Alert
 	var ws, we sql.NullTime
 	var rule sql.NullString
-	err := p.db.QueryRow(`SELECT id, organization_id, rule_id, rule_version, title, severity, risk_score, status, window_start, window_end, reason, created_at FROM alerts WHERE id=$1 AND organization_id=$2`, id, orgID).
-		Scan(&a.ID, &a.OrgID, &rule, &a.RuleVersion, &a.Title, &a.Severity, &a.RiskScore, &a.Status, &ws, &we, &a.Reason, &a.CreatedAt)
+	err := p.db.QueryRow(`SELECT id, organization_id, rule_id, rule_version, title, severity, risk_score, status,
+		coalesce(status_reason,''), window_start, window_end, reason, created_at,
+		coalesce((SELECT incident_id FROM incident_alerts ia WHERE ia.alert_id=alerts.id LIMIT 1),'')
+		FROM alerts WHERE id=$1 AND organization_id=$2`, id, orgID).
+		Scan(&a.ID, &a.OrgID, &rule, &a.RuleVersion, &a.Title, &a.Severity, &a.RiskScore, &a.Status,
+			&a.StatusReason, &ws, &we, &a.Reason, &a.CreatedAt, &a.IncidentID)
 	if err != nil {
 		return Alert{}, nil, false
 	}
@@ -735,6 +811,31 @@ func (p *PostgresStore) GetAlert(orgID, id string) (Alert, []Event, bool) {
 		}
 	}
 	return a, evs, true
+}
+
+func (p *PostgresStore) UpdateAlertStatus(orgID, id, status, actor, reason string) (Alert, error) {
+	switch status {
+	case "new", "triaged", "investigating", "resolved", "closed", "false_positive":
+	default:
+		return Alert{}, fmt.Errorf("unsupported alert status")
+	}
+	if (status == "false_positive" || status == "closed") && strings.TrimSpace(reason) == "" {
+		return Alert{}, fmt.Errorf("reason is required for %s", status)
+	}
+	res, err := p.db.Exec(`UPDATE alerts SET status=$1, status_reason=$2, status_updated_by=$3, status_updated_at=now()
+		WHERE id=$4 AND organization_id=$5`, status, strings.TrimSpace(reason), actor, id, orgID)
+	if err != nil {
+		return Alert{}, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return Alert{}, fmt.Errorf("alert not found")
+	}
+	a, _, ok := p.GetAlert(orgID, id)
+	if !ok {
+		return Alert{}, fmt.Errorf("alert not found")
+	}
+	return a, nil
 }
 
 func (p *PostgresStore) EventsInWindow(orgID string, f EventFilter, from, to time.Time) []Event {
@@ -793,12 +894,20 @@ func (p *PostgresStore) Overview(orgID string) map[string]any {
 			byRule[s.String] = c
 		}
 	}
-	var active int
-	_ = p.db.QueryRow(`SELECT count(*) FROM alerts WHERE organization_id=$1 AND status IN ('new','triaged','investigating')`, orgID).Scan(&active)
+	var totalAlerts, activeAlerts int
+	_ = p.db.QueryRow(`SELECT count(*) FROM alerts WHERE organization_id=$1`, orgID).Scan(&totalAlerts)
+	_ = p.db.QueryRow(`SELECT count(*) FROM alerts WHERE organization_id=$1 AND status IN ('new','triaged','investigating')`, orgID).Scan(&activeAlerts)
+	var totalIncidents, activeIncidents int
+	_ = p.db.QueryRow(`SELECT count(*) FROM incidents WHERE organization_id=$1`, orgID).Scan(&totalIncidents)
+	_ = p.db.QueryRow(`SELECT count(*) FROM incidents WHERE organization_id=$1 AND status IN ('new','triaged','investigating','contained')`, orgID).Scan(&activeIncidents)
 	return map[string]any{
 		"organization_id": orgID, "total_events": total,
+		"total_alerts":       totalAlerts,
+		"active_alerts":      activeAlerts,
+		"total_incidents":    totalIncidents,
+		"active_incidents":   activeIncidents,
 		"alerts_by_severity": bySev, "alerts_by_rule": byRule,
-		"active_incidents": active, "sources": p.ListSources(orgID),
+		"sources": p.ListSources(orgID),
 	}
 }
 
@@ -857,7 +966,7 @@ func (p *PostgresStore) HasRecentAlert(orgID, ruleID, dedupeKey string, since ti
 }
 
 func (p *PostgresStore) ListSources(orgID string) []Source {
-	rows, err := p.db.Query(`SELECT id, name, source_type, status FROM log_sources WHERE organization_id=$1 ORDER BY name`, orgID)
+	rows, err := p.db.Query(`SELECT id, name, source_type, status, criticality FROM log_sources WHERE organization_id=$1 ORDER BY name`, orgID)
 	if err != nil {
 		return []Source{}
 	}
@@ -866,7 +975,7 @@ func (p *PostgresStore) ListSources(orgID string) []Source {
 	for rows.Next() {
 		var s Source
 		s.OrgID = orgID
-		if err := rows.Scan(&s.ID, &s.Name, &s.Type, &s.Status); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Type, &s.Status, &s.Criticality); err != nil {
 			continue
 		}
 		out = append(out, s)
@@ -874,7 +983,7 @@ func (p *PostgresStore) ListSources(orgID string) []Source {
 	return out
 }
 
-func (p *PostgresStore) CreateSource(orgID, name, typ string) (Source, error) {
+func (p *PostgresStore) CreateSource(orgID, name, typ string, criticality int) (Source, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return Source{}, fmt.Errorf("name is required")
@@ -887,13 +996,42 @@ func (p *PostgresStore) CreateSource(orgID, name, typ string) (Source, error) {
 	default:
 		return Source{}, fmt.Errorf("unsupported source_type")
 	}
-	s := Source{ID: newID("source"), OrgID: orgID, Name: name, Type: typ, Status: "healthy"}
-	_, err := p.db.Exec(`INSERT INTO log_sources (id, organization_id, name, source_type, status) VALUES ($1,$2,$3,$4,$5)`,
-		s.ID, orgID, name, typ, s.Status)
+	if criticality < 0 || criticality > 100 {
+		return Source{}, fmt.Errorf("criticality must be 0..100")
+	}
+	s := Source{ID: newID("source"), OrgID: orgID, Name: name, Type: typ, Status: "healthy", Criticality: criticality}
+	_, err := p.db.Exec(`INSERT INTO log_sources (id, organization_id, name, source_type, status, criticality) VALUES ($1,$2,$3,$4,$5,$6)`,
+		s.ID, orgID, name, typ, s.Status, s.Criticality)
 	if err != nil {
 		return Source{}, err
 	}
 	return s, nil
+}
+
+func (p *PostgresStore) Criticality(orgID, sourceID string) int {
+	var c int
+	if err := p.db.QueryRow(`SELECT criticality FROM log_sources WHERE id=$1 AND organization_id=$2`, sourceID, orgID).Scan(&c); err != nil {
+		return 50
+	}
+	return c
+}
+
+func (p *PostgresStore) ListUsers(orgID string) []UserSummary {
+	rows, err := p.db.Query(`SELECT u.id, u.email, m.role FROM users u JOIN memberships m ON m.user_id=u.id
+		WHERE m.organization_id=$1 ORDER BY u.email`, orgID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []UserSummary{}
+	for rows.Next() {
+		var u UserSummary
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role); err != nil {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
 }
 
 func (p *PostgresStore) Audit(orgID, actor, action, target, result, corrID string) {

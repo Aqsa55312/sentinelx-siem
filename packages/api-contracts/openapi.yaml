@@ -1,7 +1,11 @@
 openapi: 3.0.3
 info:
-  title: SentinelX Core API (slice 1 + week 3)
-  version: 0.3.0
+  title: SentinelX Core API
+  version: 0.4.0
+  description: |
+    Slice 1 through Week 5: ingestion, detection, alert triage, correlation,
+    incident workflow, notes/timeline, and Markdown export. All data is scoped
+    to the caller's organization; write routes require admin or analyst.
 servers:
   - url: http://localhost:8080/api/v1
 paths:
@@ -16,25 +20,84 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string }
-                password: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, format: password }
       responses:
         '200':
-          description: token
+          description: Bearer token and session identity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  role: { $ref: '#/components/schemas/Role' }
+                  organization_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /dashboard/overview:
     get:
-      summary: Dashboard summary (counts + sources health)
+      summary: Dashboard summary
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: counts }
+        '200':
+          description: Counts, severity/rule breakdowns, and source health
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id: { type: string }
+                  total_events: { type: integer }
+                  total_alerts: { type: integer }
+                  active_alerts: { type: integer, description: new, triaged, and investigating alerts }
+                  total_incidents: { type: integer }
+                  active_incidents:
+                    type: integer
+                    description: new, triaged, investigating, and contained incidents
+                  alerts_by_severity:
+                    type: object
+                    additionalProperties: { type: integer }
+                  alerts_by_rule:
+                    type: object
+                    additionalProperties: { type: integer }
+                  sources:
+                    type: array
+                    items: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /users:
+    get:
+      summary: List organization members (assignee lookup)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Users in the caller's organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: '#/components/schemas/UserSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /sources:
     get:
       summary: List log sources
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: source list }
+        '200':
+          description: Source list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources:
+                    type: array
+                    items: { $ref: '#/components/schemas/Source' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
     post:
-      summary: Create log source (analyst/admin)
+      summary: Create log source (admin/analyst)
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -44,11 +107,24 @@ paths:
               type: object
               required: [name]
               properties:
-                name: { type: string }
-                source_type: { type: string, enum: [simulator, auth, web, api, host, cloud] }
+                name: { type: string, minLength: 1 }
+                source_type:
+                  type: string
+                  enum: [simulator, auth, web, api, host, cloud]
+                criticality:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                  default: 50
+                  description: Asset criticality used by the A component of risk scoring.
       responses:
-        '201': { description: created source }
-        '403': { description: viewer cannot write }
+        '201':
+          description: Created source
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Source' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /ingest/events:
     post:
       summary: Ingest structured events
@@ -68,14 +144,21 @@ paths:
                 source_id: { type: string }
                 events:
                   type: array
+                  minItems: 1
                   maxItems: 1000
-                  items: { type: object }
+                  items: { $ref: '#/components/schemas/EventInput' }
       responses:
-        '202': { description: accepted batch }
-        '400': { description: invalid payload }
+        '202':
+          description: Accepted batch and correlation result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /ingest/upload:
     post:
-      summary: Upload .jsonl (one object per line) or .json (array). Max 10MB / 5000 events.
+      summary: Upload .jsonl (one object per line) or .json (array)
+      description: Max 10MB / 5000 events. Parse and schema rejects are counted, not fatal.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -83,15 +166,21 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required: [file]
               properties:
                 file: { type: string, format: binary }
-                source_id: { type: string }
+                source_id: { type: string, default: source-demo-01 }
       responses:
-        '202': { description: accepted file batch }
-        '400': { description: invalid file }
+        '202':
+          description: Accepted file batch
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /events:
     get:
-      summary: Search events (filters + pagination, newest first)
+      summary: Search events (newest first)
       security: [{ bearerAuth: [] }]
       parameters:
         - in: query
@@ -107,6 +196,9 @@ paths:
           name: source_id
           schema: { type: string }
         - in: query
+          name: severity
+          schema: { $ref: '#/components/schemas/Severity' }
+        - in: query
           name: from
           schema: { type: string, format: date-time }
         - in: query
@@ -119,43 +211,446 @@ paths:
           name: offset
           schema: { type: integer, default: 0 }
       responses:
-        '200': { description: '{events, total, limit, offset}' }
+        '200':
+          description: Page of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: '#/components/schemas/Event' }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /events/{id}:
     get:
       summary: Event detail
       security: [{ bearerAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/EventID'
       responses:
-        '200': { description: event }
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /alerts:
     get:
       summary: List alerts
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: alert list }
+        '200':
+          description: Alert list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
   /alerts/{id}:
     get:
-      summary: Alert detail with evidence
+      summary: Alert detail with evidence events
       security: [{ bearerAuth: [] }]
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/AlertID'
       responses:
-        '200': { description: alert }
-  /rules:
+        '200':
+          description: Alert and evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alert: { $ref: '#/components/schemas/Alert' }
+                  evidence:
+                    type: array
+                    items: { $ref: '#/components/schemas/Event' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Triage an alert (admin/analyst)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AlertID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/AlertStatus' }
+                reason:
+                  type: string
+                  description: Required for closed and false_positive.
+      responses:
+        '200':
+          description: Updated alert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Alert' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /incidents:
     get:
-      summary: Detection rule registry with config and test cases
+      summary: List incidents (most recently updated first)
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: rule list }
+        '200':
+          description: Incident list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  incidents:
+                    type: array
+                    items: { $ref: '#/components/schemas/Incident' }
+    post:
+      summary: Create an incident from alerts (admin/analyst)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [alert_ids]
+              properties:
+                alert_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items: { type: string }
+                title: { type: string }
+                assignee_id: { type: string }
+      responses:
+        '201':
+          description: Created or already-existing incident
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Incident' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /incidents/{id}:
+    get:
+      summary: Incident detail
+      description: Includes linked alerts, notes, activity timeline, and evidence events.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IncidentID'
+      responses:
+        '200':
+          description: Incident detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Update workflow status, assignee, title, or severity (admin/analyst)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IncidentID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: '#/components/schemas/IncidentStatus' }
+                assignee_id:
+                  type: string
+                  nullable: true
+                  description: Empty string unassigns.
+                title: { type: string, minLength: 1 }
+                severity: { $ref: '#/components/schemas/Severity' }
+                closed_reason:
+                  type: string
+                  description: Required when status is closed or false_positive.
+      responses:
+        '200':
+          description: Updated incident
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  incident: { $ref: '#/components/schemas/Incident' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /incidents/{id}/notes:
+    post:
+      summary: Add an investigation note (admin/analyst)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IncidentID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        '201':
+          description: Created note
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentNote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /incidents/{id}/export:
+    get:
+      summary: Export an incident as a Markdown report
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IncidentID'
+      responses:
+        '200':
+          description: Markdown attachment
+          content:
+            text/markdown:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /rules:
+    get:
+      summary: Detection rule registry with configuration and test cases
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Rule list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items: { $ref: '#/components/schemas/Rule' }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
+      bearerFormat: HMAC-SHA256 token (8h)
+  parameters:
+    AlertID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    IncidentID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    EventID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request or workflow transition
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Role cannot write
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found in this organization
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Alert already linked to another incident
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    Role:
+      type: string
+      enum: [admin, analyst, responder, viewer]
+    Severity:
+      type: string
+      enum: [critical, high, medium, low]
+    AlertStatus:
+      type: string
+      enum: [new, triaged, investigating, resolved, closed, false_positive]
+      description: Contained incidents keep their linked alerts in investigating.
+    IncidentStatus:
+      type: string
+      enum: [new, triaged, investigating, contained, resolved, closed, false_positive]
+    UserSummary:
+      type: object
+      properties:
+        user_id: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/Role' }
+    Source:
+      type: object
+      properties:
+        source_id: { type: string }
+        name: { type: string }
+        source_type: { type: string }
+        status: { type: string, enum: [healthy, degraded, offline] }
+        criticality:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Asset criticality used by risk scoring.
+    EventInput:
+      type: object
+      description: Validated against packages/event-schema/event.json.
+      additionalProperties: true
+    Event:
+      type: object
+      properties:
+        event_id: { type: string }
+        source_id: { type: string }
+        timestamp: { type: string, format: date-time }
+        event_type: { type: string }
+        severity: { $ref: '#/components/schemas/Severity' }
+        src_ip: { type: string, format: ipv4 }
+        username: { type: string }
+        message: { type: string }
+        attributes:
+          type: object
+          additionalProperties: true
+    Alert:
+      type: object
+      properties:
+        alert_id: { type: string }
+        rule_id: { type: string }
+        rule_version: { type: string }
+        title: { type: string }
+        severity: { $ref: '#/components/schemas/Severity' }
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Prototype R = min(100, 0.4S+0.3C+0.2A+0.1B); not a compromise probability.
+        status: { $ref: '#/components/schemas/AlertStatus' }
+        status_reason: { type: string }
+        reason: { type: string }
+        window_start: { type: string, format: date-time, nullable: true }
+        window_end: { type: string, format: date-time, nullable: true }
+        incident_id: { type: string, nullable: true }
+        event_ids:
+          type: array
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+    Incident:
+      type: object
+      properties:
+        incident_id: { type: string }
+        title: { type: string }
+        severity: { $ref: '#/components/schemas/Severity' }
+        risk_score: { type: integer, minimum: 0, maximum: 100 }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        assignee_id: { type: string }
+        created_by:
+          type: string
+          description: User ID, or detection-engine for auto-correlated incidents.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        closed_reason: { type: string }
+        indicators:
+          type: array
+          items: { type: string, example: 'ip:192.0.2.10' }
+        alert_count: { type: integer }
+    IncidentNote:
+      type: object
+      properties:
+        note_id: { type: string }
+        incident_id: { type: string }
+        author_id: { type: string }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+    IncidentTimelineEntry:
+      type: object
+      properties:
+        entry_id: { type: string }
+        incident_id: { type: string }
+        kind:
+          type: string
+          enum: [created, alerts_linked, status_changed, assignment_changed, note_added, title_changed, severity_changed]
+        actor_id: { type: string }
+        message: { type: string }
+        created_at: { type: string, format: date-time }
+    IncidentDetail:
+      type: object
+      properties:
+        incident: { $ref: '#/components/schemas/Incident' }
+        alerts:
+          type: array
+          items: { $ref: '#/components/schemas/Alert' }
+        notes:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentNote' }
+        timeline:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentTimelineEntry' }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/Event' }
+    IngestResult:
+      type: object
+      properties:
+        accepted: { type: integer }
+        rejected_schema: { type: integer }
+        rejected_parse: { type: integer }
+        alerts_fired: { type: integer }
+        alert_ids:
+          type: array
+          items: { type: string }
+        incidents_created: { type: integer }
+        incidents_updated: { type: integer }
+        incident_ids:
+          type: array
+          items: { type: string }
+        filename: { type: string }
+    Rule:
+      type: object
+      properties:
+        rule_id: { type: string, example: DET-001 }
+        version: { type: string }
+        name: { type: string }
+        description: { type: string }
+        severity: { $ref: '#/components/schemas/Severity' }
+        enabled: { type: boolean }
+        threshold: { type: integer }
+        window_seconds: { type: integer }
+        test_cases:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              fixture: { type: string }
+              expected_alerts: { type: integer }

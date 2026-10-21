@@ -35,6 +35,7 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/v1/auth/login", handleLogin(st))
 	mux.HandleFunc("GET /api/v1/dashboard/overview", withAuth(st, handleOverview))
+	mux.HandleFunc("GET /api/v1/users", withAuth(st, handleListUsers))
 	mux.HandleFunc("POST /api/v1/sources", withAuth(st, handleCreateSource, true))
 	mux.HandleFunc("GET /api/v1/sources", withAuth(st, handleListSources))
 	mux.HandleFunc("POST /api/v1/ingest/events", withAuth(st, handleIngest, true))
@@ -43,6 +44,13 @@ func main() {
 	mux.HandleFunc("GET /api/v1/events/{id}", withAuth(st, handleGetEvent))
 	mux.HandleFunc("GET /api/v1/alerts", withAuth(st, handleListAlerts))
 	mux.HandleFunc("GET /api/v1/alerts/{id}", withAuth(st, handleGetAlert))
+	mux.HandleFunc("PATCH /api/v1/alerts/{id}", withAuth(st, handleUpdateAlert, true))
+	mux.HandleFunc("GET /api/v1/incidents", withAuth(st, handleListIncidents))
+	mux.HandleFunc("POST /api/v1/incidents", withAuth(st, handleCreateIncident, true))
+	mux.HandleFunc("GET /api/v1/incidents/{id}", withAuth(st, handleGetIncident))
+	mux.HandleFunc("PATCH /api/v1/incidents/{id}", withAuth(st, handleUpdateIncident, true))
+	mux.HandleFunc("POST /api/v1/incidents/{id}/notes", withAuth(st, handleAddIncidentNote, true))
+	mux.HandleFunc("GET /api/v1/incidents/{id}/export", withAuth(st, handleExportIncident))
 	mux.HandleFunc("GET /api/v1/rules", withAuth(st, handleListRules))
 
 	addr := os.Getenv("PORT")
@@ -145,11 +153,15 @@ func handleIngest(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {
 	}
 	accepted, rejected := st.Ingest(cl.OrgID, body.SourceID, body.Events)
 	fired := evaluateAll(st, cl.OrgID, accepted)
+	corr := correlateAlerts(st, cl.OrgID, "detection-engine", fired)
 	st.Audit(cl.OrgID, cl.UserID, "ingest.batch", body.SourceID, "ok", corrID(r))
 	writeJSON(w, 202, map[string]any{
 		"accepted": len(accepted), "rejected": rejected,
-		"alerts_fired": len(fired),
-		"alert_ids":    alertIDs(fired),
+		"alerts_fired":      len(fired),
+		"alert_ids":         alertIDs(fired),
+		"incidents_created": corr.Created,
+		"incidents_updated": corr.Updated,
+		"incident_ids":      corr.IncidentIDs,
 	})
 }
 
@@ -203,14 +215,19 @@ func handleListSources(st Store, cl Claims, w http.ResponseWriter, r *http.Reque
 
 func handleCreateSource(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
-		Type string `json:"source_type"`
+		Name        string `json:"name"`
+		Type        string `json:"source_type"`
+		Criticality *int   `json:"criticality"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&body); err != nil {
 		writeErr(w, 400, "invalid JSON")
 		return
 	}
-	src, err := st.CreateSource(cl.OrgID, body.Name, body.Type)
+	crit := 50
+	if body.Criticality != nil {
+		crit = *body.Criticality
+	}
+	src, err := st.CreateSource(cl.OrgID, body.Name, body.Type, crit)
 	if err != nil {
 		writeErr(w, 400, err.Error())
 		return
@@ -246,11 +263,14 @@ func handleUpload(st Store, cl Claims, w http.ResponseWriter, r *http.Request) {
 	}
 	accepted, rejectedSchema := st.Ingest(cl.OrgID, sourceID, raw)
 	fired := evaluateAll(st, cl.OrgID, accepted)
+	corr := correlateAlerts(st, cl.OrgID, "detection-engine", fired)
 	st.Audit(cl.OrgID, cl.UserID, "ingest.upload", sourceID, "ok", corrID(r))
 	writeJSON(w, 202, map[string]any{
 		"filename": hdr.Filename, "accepted": len(accepted),
 		"rejected_parse": rejectedParse, "rejected_schema": rejectedSchema,
 		"alerts_fired": len(fired), "alert_ids": alertIDs(fired),
+		"incidents_created": corr.Created, "incidents_updated": corr.Updated,
+		"incident_ids": corr.IncidentIDs,
 	})
 }
 

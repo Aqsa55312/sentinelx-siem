@@ -121,6 +121,26 @@ func fire(st Store, orgID, ruleID string, ruleVersion int, dedupeKey, title, sev
 	return a, true
 }
 
+// assetCriticality returns the highest configured criticality across the
+// evidence sources. Unknown sources fall back to the neutral 50 baseline.
+func assetCriticality(st Store, orgID string, evs ...Event) int {
+	best := -1
+	seen := map[string]bool{}
+	for _, e := range evs {
+		if e.SourceID == "" || seen[e.SourceID] {
+			continue
+		}
+		seen[e.SourceID] = true
+		if v := st.Criticality(orgID, e.SourceID); v > best {
+			best = v
+		}
+	}
+	if best < 0 {
+		return 50
+	}
+	return best
+}
+
 // evaluateDET001: many authentication_failed from the same src_ip in a window.
 func evaluateDET001(st Store, orgID string, batch []Event) []Alert {
 	byIP := map[string][]Event{}
@@ -144,7 +164,7 @@ func evaluateDET001(st Store, orgID string, batch []Event) []Alert {
 		a, created := fire(st, orgID, det001RuleID, det001RuleVersion,
 			fmt.Sprintf("ip:%s|w:%s", ip, bucketKey(latest, det001WindowSec*time.Second)),
 			fmt.Sprintf("Brute-force-like activity from %s (%d failures)", ip, len(failures)),
-			"high", det001Confidence, 50, clamp(len(failures)*10),
+			"high", det001Confidence, assetCriticality(st, orgID, failures...), clamp(len(failures)*10),
 			fmt.Sprintf("DET-001 v%d: %d authentication_failed from src_ip=%s within %ds (threshold %d).",
 				det001RuleVersion, len(failures), ip, det001WindowSec, det001Threshold),
 			failures[0].Timestamp, latest, ids)
@@ -175,10 +195,11 @@ func evaluateDET002(st Store, orgID string, batch []Event) []Alert {
 			ids = append(ids, f.ID)
 		}
 		ids = append(ids, succ.ID)
+		evidence := append(append([]Event{}, failures...), succ)
 		a, created := fire(st, orgID, det002RuleID, det002RuleVersion,
 			fmt.Sprintf("user:%s|ip:%s|w:%s", succ.Username, succ.SrcIP, bucketKey(succ.Timestamp, det002WindowSec*time.Second)),
 			fmt.Sprintf("Suspicious authentication sequence for %s from %s", succ.Username, succ.SrcIP),
-			"high", det002Confidence, 50, clamp(len(failures)*15),
+			"high", det002Confidence, assetCriticality(st, orgID, evidence...), clamp(len(failures)*15),
 			fmt.Sprintf("DET-002 v%d: %d authentication_failed followed by authentication_success for username=%s src_ip=%s within %ds.",
 				det002RuleVersion, len(failures), succ.Username, succ.SrcIP, det002WindowSec),
 			failures[0].Timestamp, succ.Timestamp, ids)
@@ -215,7 +236,7 @@ func evaluateDET003(st Store, orgID string, batch []Event) []Alert {
 		a, created := fire(st, orgID, det003RuleID, det003RuleVersion,
 			fmt.Sprintf("user:%s|day:%s", actor, e.Timestamp.UTC().Format("2006-01-02")),
 			fmt.Sprintf("Admin activity outside baseline hours by %s", actor),
-			"medium", det003Confidence, 60, 70,
+			"medium", det003Confidence, assetCriticality(st, orgID, e), 70,
 			fmt.Sprintf("DET-003 v%d: admin_action at %s UTC by username=%s, outside baseline %02d:00-%02d:00 UTC (simulated baseline).",
 				det003RuleVersion, e.Timestamp.UTC().Format("15:04"), actor, start, end),
 			e.Timestamp, e.Timestamp, []string{e.ID})
@@ -255,7 +276,7 @@ func evaluateDET004(st Store, orgID string, batch []Event) []Alert {
 		a, created := fire(st, orgID, det004RuleID, det004RuleVersion,
 			fmt.Sprintf("src:%s|w:%s", key, bucketKey(latest, det004WindowSec*time.Second)),
 			fmt.Sprintf("Repeated high-risk events from %s (%d in %ds)", key, len(matched), det004WindowSec),
-			"high", det004Confidence, 50, clamp(len(matched)*20),
+			"high", det004Confidence, assetCriticality(st, orgID, matched...), clamp(len(matched)*20),
 			fmt.Sprintf("DET-004 v%d: %d high_risk_event from src=%s within %ds (threshold %d).",
 				det004RuleVersion, len(matched), key, det004WindowSec, det004Threshold),
 			matched[0].Timestamp, latest, ids)

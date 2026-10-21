@@ -648,11 +648,11 @@ SentinelX is planned to evolve through incremental milestones.
   - [x] Add initial risk scoring.
   - [x] Write unit and integration tests.
 
-- [ ] **Phase 4 — Incident Management**
-  - [ ] Implement incident CRUD operations.
-  - [ ] Add incident status and assignment workflows.
-  - [x] Build the initial React dashboard. _(overview, event explorer, alerts, rules, sources)_
-  - [ ] Display events, alerts, and incident timelines.
+- [x] **Phase 4 — Incident Management**
+  - [x] Implement incident CRUD operations.
+  - [x] Add incident status and assignment workflows.
+  - [x] Build the initial React dashboard. _(overview, event explorer, alerts, incidents, rules, sources)_
+  - [x] Display events, alerts, and incident timelines. _(linked evidence, notes, audit timeline, Markdown export)_
 
 - [ ] **Phase 5 — AI Investigation**
   - [ ] Build the FastAPI AI service.

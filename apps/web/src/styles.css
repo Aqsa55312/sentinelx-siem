@@ -993,24 +993,137 @@ details > summary {
   overflow: hidden;
   padding: 30px 44px 34px;
   border-right: 1px solid var(--line);
-  background:
-    linear-gradient(90deg, rgba(216, 243, 106, 0.035) 1px, transparent 1px),
-    linear-gradient(rgba(216, 243, 106, 0.028) 1px, transparent 1px),
-    #0d0f0a;
-  background-size: 58px 58px, 58px 58px, auto;
+  background: #0d0f0a;
 }
-.login-brand::after {
+.login-brand > :not(.login-backdrop) { position: relative; z-index: 1; }
+
+.login-backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+
+.login-grid {
+  position: absolute;
+  inset: -80px;
+  background-image:
+    linear-gradient(90deg, rgba(216, 243, 106, 0.045) 1px, transparent 1px),
+    linear-gradient(rgba(216, 243, 106, 0.035) 1px, transparent 1px);
+  background-size: 58px 58px;
+  opacity: 0.8;
+  mask-image: radial-gradient(ellipse at 30% 38%, black 0 34%, transparent 76%);
+  animation: gridDrift 34s linear infinite;
+}
+.login-grid::after {
   content: '';
   position: absolute;
-  right: -80px;
-  bottom: -120px;
-  width: 340px;
-  height: 340px;
-  border: 1px solid rgba(216, 243, 106, 0.12);
-  border-radius: 50%;
-  pointer-events: none;
+  inset: 0;
+  background-image: radial-gradient(rgba(216, 243, 106, 0.14) 0.7px, transparent 0.8px);
+  background-size: 19px 19px;
+  opacity: 0.3;
 }
-.login-brand > * { position: relative; z-index: 1; }
+
+.login-radar {
+  position: absolute;
+  right: -105px;
+  bottom: -105px;
+  width: 430px;
+  height: 430px;
+  border-radius: 50%;
+  opacity: 0.72;
+}
+
+.radar-ring {
+  position: absolute;
+  border: 1px solid rgba(216, 243, 106, 0.1);
+  border-radius: 50%;
+}
+.ring-1 { inset: 0; }
+.ring-2 { inset: 54px; }
+.ring-3 { inset: 108px; }
+
+.radar-cross { position: absolute; background: rgba(216, 243, 106, 0.07); }
+.radar-cross-x { left: 0; right: 0; top: 50%; height: 1px; }
+.radar-cross-y { top: 0; bottom: 0; left: 50%; width: 1px; }
+
+.radar-pulse {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(216, 243, 106, 0.42);
+  border-radius: 50%;
+  opacity: 0;
+  animation: radarPulse 7s cubic-bezier(0.2, 0.7, 0.3, 1) infinite;
+}
+
+.radar-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 302deg,
+    rgba(216, 243, 106, 0) 302deg,
+    rgba(216, 243, 106, 0.1) 342deg,
+    rgba(216, 243, 106, 0.28) 358deg,
+    transparent 360deg
+  );
+  mask-image: radial-gradient(circle, transparent 0 17%, black 18% 100%);
+  animation: radarSweep 12s linear infinite;
+}
+
+.radar-core {
+  position: absolute;
+  left: calc(50% - 3px);
+  top: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(216, 243, 106, 0.1);
+  animation: radarCore 2.6s ease-in-out infinite;
+}
+
+.radar-blip {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+  opacity: 0;
+  animation: radarBlip 7s ease-out infinite;
+}
+.blip-1 { left: 67%; top: 29%; animation-delay: 0.7s; }
+.blip-2 { left: 37%; top: 61%; animation-delay: 2.2s; }
+.blip-3 { left: 74%; top: 68%; animation-delay: 4.1s; }
+.blip-4 { left: 29%; top: 38%; animation-delay: 5.4s; }
+
+.login-coord {
+  position: absolute;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(216, 243, 106, 0.4);
+}
+.coord-1 { right: 42px; top: 88px; }
+.coord-2 { right: 42px; top: 108px; }
+
+@keyframes gridDrift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(58px, 58px, 0); }
+}
+@keyframes radarSweep {
+  to { transform: rotate(360deg); }
+}
+@keyframes radarPulse {
+  0% { transform: scale(0.25); opacity: 0; }
+  16% { opacity: 0.65; }
+  100% { transform: scale(1); opacity: 0; }
+}
+@keyframes radarCore {
+  0%, 100% { opacity: 0.7; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes radarBlip {
+  0%, 7% { opacity: 0; transform: scale(0.4); }
+  11% { opacity: 0.9; transform: scale(1); }
+  27% { opacity: 0; transform: scale(1.9); }
+  100% { opacity: 0; transform: scale(1.9); }
+}
 .login-brand .brand { padding: 0; }
 .login-brand-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .login-index {
@@ -1368,6 +1481,8 @@ input[type='range'].input:focus { border-color: transparent; box-shadow: none; }
   .login-tagline { font-size: 46px; }
   .login-copy { font-size: 12.5px; }
   .login-points, .login-meta { display: none; }
+  .login-radar { right: -120px; bottom: -130px; width: 320px; height: 320px; opacity: 0.55; }
+  .login-coord { display: none; }
   .login-form { padding: 30px 20px 40px; gap: 14px; }
   .login-form-head h2 { font-size: 34px; }
 }

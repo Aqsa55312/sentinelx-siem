@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
+import LoginBackdrop from '../components/LoginBackdrop';
 import { IconActivity, IconShield } from '../components/Icons';
 
 type Props = {
@@ -36,6 +37,8 @@ export default function Login({ onLogin }: Props) {
     <div className="login-screen">
       <div className="login-card">
         <section className="login-brand">
+          <LoginBackdrop />
+
           <div className="login-brand-top">
             <div className="brand">
               <span className="brand-mark">

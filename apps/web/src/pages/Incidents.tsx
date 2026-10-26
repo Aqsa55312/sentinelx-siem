@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { fmtDateTime, riskTone, timeAgo, titleCase } from '../lib/format';
+import { riskTone } from '../lib/format';
+import { useI18n, type TranslationKey } from '../i18n';
 import {
   IconArrowRight,
   IconCase,
@@ -19,41 +20,59 @@ type Props = {
   onViewEvents: (srcIp: string) => void;
 };
 
-type Transition = { status: string; label: string; prompt?: string };
+type Transition = { status: string; labelKey: TranslationKey; promptKey?: TranslationKey };
 
 const TRANSITIONS: Record<string, Transition[]> = {
   new: [
-    { status: 'triaged', label: 'Triage' },
-    { status: 'investigating', label: 'Investigate' },
-    { status: 'false_positive', label: 'False positive', prompt: 'Why is this incident a false positive? (required, audit-logged)' },
+    { status: 'triaged', labelKey: 'incidents.action.triage' },
+    { status: 'investigating', labelKey: 'incidents.action.investigate' },
+    {
+      status: 'false_positive',
+      labelKey: 'incidents.action.falsePositive',
+      promptKey: 'incidents.prompt.falsePositive',
+    },
   ],
   triaged: [
-    { status: 'investigating', label: 'Investigate' },
-    { status: 'false_positive', label: 'False positive', prompt: 'Why is this incident a false positive? (required, audit-logged)' },
+    { status: 'investigating', labelKey: 'incidents.action.investigate' },
+    {
+      status: 'false_positive',
+      labelKey: 'incidents.action.falsePositive',
+      promptKey: 'incidents.prompt.falsePositive',
+    },
   ],
   investigating: [
-    { status: 'contained', label: 'Contain' },
-    { status: 'resolved', label: 'Resolve' },
-    { status: 'false_positive', label: 'False positive', prompt: 'Why is this incident a false positive? (required, audit-logged)' },
+    { status: 'contained', labelKey: 'incidents.action.contain' },
+    { status: 'resolved', labelKey: 'incidents.action.resolve' },
+    {
+      status: 'false_positive',
+      labelKey: 'incidents.action.falsePositive',
+      promptKey: 'incidents.prompt.falsePositive',
+    },
   ],
   contained: [
-    { status: 'resolved', label: 'Resolve' },
-    { status: 'investigating', label: 'Reopen investigation' },
-    { status: 'false_positive', label: 'False positive', prompt: 'Why is this incident a false positive? (required, audit-logged)' },
+    { status: 'resolved', labelKey: 'incidents.action.resolve' },
+    { status: 'investigating', labelKey: 'incidents.action.reopen' },
+    {
+      status: 'false_positive',
+      labelKey: 'incidents.action.falsePositive',
+      promptKey: 'incidents.prompt.falsePositive',
+    },
   ],
-  resolved: [{ status: 'closed', label: 'Close', prompt: 'Closure summary (required, audit-logged)' }],
+  resolved: [
+    { status: 'closed', labelKey: 'incidents.action.close', promptKey: 'incidents.prompt.closure' },
+  ],
   closed: [],
   false_positive: [],
 };
 
-const TIMELINE_LABEL: Record<string, string> = {
-  created: 'Incident created',
-  alerts_linked: 'Alerts linked',
-  status_changed: 'Status changed',
-  assignment_changed: 'Assignment changed',
-  note_added: 'Investigation note',
-  title_changed: 'Title updated',
-  severity_changed: 'Severity changed',
+const TIMELINE_LABEL: Record<string, TranslationKey> = {
+  created: 'incidents.timeline.created',
+  alerts_linked: 'incidents.timeline.alertsLinked',
+  status_changed: 'incidents.timeline.statusChanged',
+  assignment_changed: 'incidents.timeline.assignmentChanged',
+  note_added: 'incidents.timeline.noteAdded',
+  title_changed: 'incidents.timeline.titleChanged',
+  severity_changed: 'incidents.timeline.severityChanged',
 };
 
 function timelineDot(kind: string) {
@@ -64,6 +83,7 @@ function timelineDot(kind: string) {
 }
 
 export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, onViewEvents }: Props) {
+  const { t, fmtDateTime, timeAgo, statusLabel, severityLabel, eventTypeLabel, roleLabel } = useI18n();
   const [incidents, setIncidents] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [selected, setSelected] = useState<string | null>(focusId ?? null);
@@ -127,7 +147,7 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
   }, [users]);
 
   const userLabel = (id?: string) => {
-    if (!id) return 'Unassigned';
+    if (!id) return t('common.unassigned');
     return userMap.get(id)?.email ?? id;
   };
 
@@ -149,7 +169,7 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
       if (input === null) return;
       const reason = input.trim();
       if (!reason) {
-        setActionErr('A reason is required for this action.');
+        setActionErr(t('common.reasonRequired'));
         return;
       }
       patch = { ...patch, closed_reason: reason };
@@ -161,7 +181,7 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
       await api.updateIncident(selected, patch);
       await refreshList();
       setDetailKey((k) => k + 1);
-      setNotice('Incident updated and audit-logged.');
+      setNotice(t('incidents.updatedNotice'));
     } catch (e: any) {
       setActionErr(e.message);
     } finally {
@@ -179,7 +199,7 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
       setNote('');
       await refreshList();
       setDetailKey((k) => k + 1);
-      setNotice('Note added to the incident timeline.');
+      setNotice(t('incidents.noteNotice'));
     } catch (e: any) {
       setActionErr(e.message);
     } finally {
@@ -201,7 +221,7 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice('Markdown report exported.');
+      setNotice(t('incidents.exportedNotice'));
     } catch (e: any) {
       setActionErr(e.message);
     }
@@ -230,9 +250,9 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
         <section className="panel" style={{ padding: 14 }}>
           <div className="panel-head" style={{ padding: '4px 6px 10px', marginBottom: 4 }}>
             <div>
-              <div className="panel-title">Incident queue</div>
+              <div className="panel-title">{t('incidents.queue')}</div>
               <div className="panel-sub">
-                {incidents.length} total · {activeCount} active · correlation groups shared indicators
+                {t('incidents.queueSub', { total: incidents.length, active: activeCount })}
               </div>
             </div>
           </div>
@@ -242,11 +262,8 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
               <span className="empty-icon">
                 <IconCase size={20} />
               </span>
-              <span className="empty-title">No incidents yet</span>
-              <span className="small">
-                Alerts sharing an IP or username inside 24h are grouped automatically. Upload a scenario to seed the
-                queue.
-              </span>
+              <span className="empty-title">{t('incidents.noIncidents')}</span>
+              <span className="small">{t('incidents.noIncidentsText')}</span>
             </div>
           ) : (
             <div className="alert-list">
@@ -264,8 +281,8 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
                         {i.title}
                       </span>
                       <span className="alert-item-meta">
-                        <span className={`status-tag ${i.status}`}>{titleCase(i.status)}</span>
-                        <span>{i.alert_count} alert{i.alert_count === 1 ? '' : 's'}</span>
+                        <span className={`status-tag ${i.status}`}>{statusLabel(i.status)}</span>
+                        <span>{t('common.alertCount', { count: i.alert_count })}</span>
                         <span>·</span>
                         <span>{timeAgo(i.updated_at)}</span>
                       </span>
@@ -285,10 +302,8 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
               <span className="empty-icon">
                 <IconCase size={20} />
               </span>
-              <span className="empty-title">Select an incident</span>
-              <span className="small">
-                Risk, linked alerts, evidence, investigation notes, and the activity trail appear here.
-              </span>
+              <span className="empty-title">{t('incidents.select')}</span>
+              <span className="small">{t('incidents.selectText')}</span>
             </div>
           ) : loading && !detail ? (
             <div>
@@ -305,17 +320,18 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
                 <div style={{ minWidth: 0 }}>
                   <div className="detail-title">{inc.title}</div>
                   <div className="detail-sub">
-                    <span className="mono">{inc.incident_id}</span> · updated {timeAgo(inc.updated_at)}
+                    <span className="mono">{inc.incident_id}</span> ·{' '}
+                    {t('incidents.updatedAt', { time: timeAgo(inc.updated_at) })}
                     {inc.created_by === 'detection-engine' && (
-                      <span className="chip" style={{ marginLeft: 8 }}>auto-correlated</span>
+                      <span className="chip" style={{ marginLeft: 8 }}>{t('incidents.autoCorrelated')}</span>
                     )}
                   </div>
                 </div>
                 <div className="detail-head-actions">
-                  <span className={`sev ${inc.severity}`}>{inc.severity}</span>
-                  <span className={`status-tag ${inc.status}`}>{titleCase(inc.status)}</span>
+                  <span className={`sev ${inc.severity}`}>{severityLabel(inc.severity)}</span>
+                  <span className={`status-tag ${inc.status}`}>{statusLabel(inc.status)}</span>
                   <button className="btn sm" onClick={exportReport}>
-                    <IconDownload size={14} /> Export
+                    <IconDownload size={14} /> {t('common.export')}
                   </button>
                 </div>
               </div>
@@ -323,25 +339,31 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
               <RiskMeter score={inc.risk_score} />
 
               <div className="meta-grid">
-                <Meta label="Status" value={<span className={`status-tag ${inc.status}`}>{titleCase(inc.status)}</span>} />
-                <Meta label="Severity" value={<span className={`sev ${inc.severity}`}>{inc.severity}</span>} />
-                <Meta label="Assignee" value={userLabel(inc.assignee_id)} />
-                <Meta label="Linked alerts" value={`${inc.alert_count}`} />
+                <Meta
+                  label={t('incidents.status')}
+                  value={<span className={`status-tag ${inc.status}`}>{statusLabel(inc.status)}</span>}
+                />
+                <Meta
+                  label={t('incidents.severity')}
+                  value={<span className={`sev ${inc.severity}`}>{severityLabel(inc.severity)}</span>}
+                />
+                <Meta label={t('incidents.assignee')} value={userLabel(inc.assignee_id)} />
+                <Meta label={t('incidents.linkedAlerts')} value={`${inc.alert_count}`} />
               </div>
 
               <div className="incident-toolbar">
                 <label className="inline-field">
-                  <span>Assignee</span>
+                  <span>{t('incidents.assignee')}</span>
                   <select
                     className="select"
                     value={inc.assignee_id ?? ''}
                     disabled={!canWrite || busy}
                     onChange={(e) => updateIncident({ assignee_id: e.target.value })}
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">{t('common.unassigned')}</option>
                     {users.map((u) => (
                       <option key={u.user_id} value={u.user_id}>
-                        {u.email} · {u.role}
+                        {u.email} · {roleLabel(u.role)}
                       </option>
                     ))}
                   </select>
@@ -349,19 +371,19 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
 
                 {canWrite && transitions.length > 0 && (
                   <div className="action-row" style={{ marginLeft: 'auto' }}>
-                    {transitions.map((t) => (
+                    {transitions.map((tr) => (
                       <button
-                        key={t.status}
-                        className={`btn sm ${t.status === 'false_positive' ? 'ghost' : ''}`}
+                        key={tr.status}
+                        className={`btn sm ${tr.status === 'false_positive' ? 'ghost' : ''}`}
                         disabled={busy}
-                        onClick={() => updateIncident({ status: t.status }, t.prompt)}
+                        onClick={() => updateIncident({ status: tr.status }, tr.promptKey ? t(tr.promptKey) : undefined)}
                       >
-                        {t.label}
+                        {t(tr.labelKey)}
                       </button>
                     ))}
                   </div>
                 )}
-                {!canWrite && <span className="chip" style={{ marginLeft: 'auto' }}>read-only role</span>}
+                {!canWrite && <span className="chip" style={{ marginLeft: 'auto' }}>{t('common.readOnly')}</span>}
               </div>
 
               {actionErr && <div className="error-box" style={{ marginBottom: 14 }}>{actionErr}</div>}
@@ -369,36 +391,40 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
 
               {inc.closed_reason && (
                 <div className="reason-box subtle" style={{ marginBottom: 16 }}>
-                  <b>Closure reason:</b> {inc.closed_reason}
+                  <b>{t('incidents.closedReason')}:</b> {inc.closed_reason}
                 </div>
               )}
 
-              <div className="section-label">Indicators</div>
+              <div className="section-label">{t('incidents.indicators')}</div>
               <div className="chips">
-                {(inc.indicators ?? []).length === 0 && <span className="muted small">No indicators recorded.</span>}
+                {(inc.indicators ?? []).length === 0 && (
+                  <span className="muted small">{t('incidents.noIndicators')}</span>
+                )}
                 {(inc.indicators ?? []).map((ind: string) => (
                   <span className="chip mono" key={ind}>{ind}</span>
                 ))}
               </div>
 
-              <div className="section-label">Linked alerts · {detail.alerts?.length ?? 0}</div>
+              <div className="section-label">
+                {t('incidents.linkedAlertsCount', { count: detail.alerts?.length ?? 0 })}
+              </div>
               <div className="linked-alerts">
                 {(detail.alerts ?? []).map((a: any) => (
                   <button className="linked-alert" key={a.alert_id} onClick={() => onOpenAlert(a.alert_id)}>
                     <span className={`dot ${a.severity}`} />
                     <span className="linked-alert-title">{a.title}</span>
-                    <span className={`status-tag ${a.status}`}>{titleCase(a.status)}</span>
+                    <span className={`status-tag ${a.status}`}>{statusLabel(a.status)}</span>
                     <span className={`risk-pill ${riskTone(a.risk_score ?? 0)}`}>{a.risk_score}</span>
                     <IconArrowRight size={14} />
                   </button>
                 ))}
-                {!detail.alerts?.length && <p className="muted small">No alerts linked.</p>}
+                {!detail.alerts?.length && <p className="muted small">{t('incidents.noAlertsLinked')}</p>}
               </div>
 
-              <div className="section-label">Investigation notes</div>
+              <div className="section-label">{t('incidents.notes')}</div>
               <div className="note-list">
                 {(detail.notes ?? []).length === 0 && (
-                  <p className="muted small">No notes yet. Document what you checked and what you ruled out.</p>
+                  <p className="muted small">{t('incidents.noNotes')}</p>
                 )}
                 {(detail.notes ?? []).map((n: any) => (
                   <div className="note-item" key={n.note_id}>
@@ -415,45 +441,50 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
                 <form className="note-form" onSubmit={addNote}>
                   <textarea
                     className="input"
-                    placeholder="Add an investigation note — what did you verify, and what did you rule out?"
+                    placeholder={t('incidents.notePlaceholder')}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     maxLength={4000}
                   />
                   <button className="btn primary sm" type="submit" disabled={noteBusy || !note.trim()}>
-                    <IconNote size={14} /> {noteBusy ? 'Adding…' : 'Add note'}
+                    <IconNote size={14} /> {noteBusy ? t('incidents.adding') : t('incidents.addNote')}
                   </button>
                 </form>
               )}
 
-              <div className="section-label">Activity timeline</div>
+              <div className="section-label">{t('incidents.activity')}</div>
               <div className="timeline">
-                {(detail.timeline ?? []).map((t: any) => (
-                  <div className="timeline-item" key={t.entry_id}>
-                    <span className={`timeline-dot ${timelineDot(t.kind)}`} />
-                    <div className="timeline-top">
-                      <span className="timeline-type">{TIMELINE_LABEL[t.kind] ?? t.kind}</span>
-                      <span className="timeline-time">
-                        <IconClock size={11} style={{ marginRight: 4, verticalAlign: -1 }} />
-                        {fmtDateTime(t.created_at)}
-                      </span>
+                {(detail.timeline ?? []).map((entry: any) => {
+                  const labelKey = TIMELINE_LABEL[entry.kind];
+                  return (
+                    <div className="timeline-item" key={entry.entry_id}>
+                      <span className={`timeline-dot ${timelineDot(entry.kind)}`} />
+                      <div className="timeline-top">
+                        <span className="timeline-type">{labelKey ? t(labelKey) : entry.kind}</span>
+                        <span className="timeline-time">
+                          <IconClock size={11} style={{ marginRight: 4, verticalAlign: -1 }} />
+                          {fmtDateTime(entry.created_at)}
+                        </span>
+                      </div>
+                      <div className="timeline-meta">
+                        <span>{userLabel(entry.actor_id)}</span>
+                        <span>{entry.message}</span>
+                      </div>
                     </div>
-                    <div className="timeline-meta">
-                      <span>{userLabel(t.actor_id)}</span>
-                      <span>{t.message}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <details className="evidence-block">
                 <summary>
-                  Evidence · {evidence.length} event{evidence.length === 1 ? '' : 's'}
+                  {t('incidents.evidence', {
+                    events: t('common.eventCount', { count: evidence.length }),
+                  })}
                 </summary>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
                   {firstIp && (
                     <button className="btn sm" onClick={() => onViewEvents(firstIp)}>
-                      View source events <IconArrowRight size={14} />
+                      {t('incidents.viewSourceEvents')} <IconArrowRight size={14} />
                     </button>
                   )}
                 </div>
@@ -472,18 +503,18 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
                         }`}
                       />
                       <div className="timeline-top">
-                        <span className="timeline-type">{e.event_type}</span>
-                        <span className={`sev ${e.severity}`}>{e.severity}</span>
+                        <span className="timeline-type">{eventTypeLabel(e.event_type)}</span>
+                        <span className={`sev ${e.severity}`}>{severityLabel(e.severity)}</span>
                         <span className="timeline-time">{fmtDateTime(e.timestamp)}</span>
                       </div>
                       <div className="timeline-meta">
-                        <span className="mono">{e.src_ip || 'no src_ip'}</span>
-                        <span>{e.username || 'unknown user'}</span>
+                        <span className="mono">{e.src_ip || t('common.noSrcIp')}</span>
+                        <span>{e.username || t('common.unknownUser')}</span>
                         <span className="mono">{e.event_id}</span>
                       </div>
                     </div>
                   ))}
-                  {evidence.length === 0 && <p className="muted small">No linked evidence events.</p>}
+                  {evidence.length === 0 && <p className="muted small">{t('alerts.noEvidence')}</p>}
                 </div>
               </details>
             </>

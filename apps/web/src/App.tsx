@@ -7,6 +7,8 @@ import Alerts from './pages/Alerts';
 import Incidents from './pages/Incidents';
 import Rules from './pages/Rules';
 import Sources from './pages/Sources';
+import LanguageSwitch from './components/LanguageSwitch';
+import { useI18n, type TranslationKey } from './i18n';
 import {
   IconActivity,
   IconBell,
@@ -24,45 +26,45 @@ type Tab = 'overview' | 'events' | 'alerts' | 'incidents' | 'rules' | 'sources';
 
 type Session = { token: string; role: string; email: string };
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview', label: 'Overview', icon: <IconGrid size={17} /> },
-  { id: 'events', label: 'Event Explorer', icon: <IconList size={17} /> },
-  { id: 'alerts', label: 'Alerts', icon: <IconBell size={17} /> },
-  { id: 'incidents', label: 'Incidents', icon: <IconCase size={17} /> },
-  { id: 'rules', label: 'Detection Rules', icon: <IconSliders size={17} /> },
-  { id: 'sources', label: 'Log Sources', icon: <IconDatabase size={17} /> },
+const TABS: { id: Tab; labelKey: TranslationKey; icon: React.ReactNode }[] = [
+  { id: 'overview', labelKey: 'nav.overview', icon: <IconGrid size={17} /> },
+  { id: 'events', labelKey: 'nav.events', icon: <IconList size={17} /> },
+  { id: 'alerts', labelKey: 'nav.alerts', icon: <IconBell size={17} /> },
+  { id: 'incidents', labelKey: 'nav.incidents', icon: <IconCase size={17} /> },
+  { id: 'rules', labelKey: 'nav.rules', icon: <IconSliders size={17} /> },
+  { id: 'sources', labelKey: 'nav.sources', icon: <IconDatabase size={17} /> },
 ];
 
-const PAGE_META: Record<Tab, { eyebrow: string; title: string; sub: string }> = {
+const PAGE_META: Record<Tab, { eyebrow: TranslationKey; title: TranslationKey; sub: TranslationKey }> = {
   overview: {
-    eyebrow: 'Security posture',
-    title: 'Overview',
-    sub: 'Live view of ingestion, detections, and source health across your workspace.',
+    eyebrow: 'meta.overview.eyebrow',
+    title: 'meta.overview.title',
+    sub: 'meta.overview.sub',
   },
   events: {
-    eyebrow: 'Telemetry',
-    title: 'Event Explorer',
-    sub: 'Search normalized events, pivot on indicators, and upload log batches for detection.',
+    eyebrow: 'meta.events.eyebrow',
+    title: 'meta.events.title',
+    sub: 'meta.events.sub',
   },
   alerts: {
-    eyebrow: 'Detection',
-    title: 'Alerts',
-    sub: 'Every detection carries its rule version, risk reasoning, and the events that triggered it.',
+    eyebrow: 'meta.alerts.eyebrow',
+    title: 'meta.alerts.title',
+    sub: 'meta.alerts.sub',
   },
   incidents: {
-    eyebrow: 'Response',
-    title: 'Incidents',
-    sub: 'Correlated detections, investigation notes, and an audit-logged status workflow from triage to closure.',
+    eyebrow: 'meta.incidents.eyebrow',
+    title: 'meta.incidents.title',
+    sub: 'meta.incidents.sub',
   },
   rules: {
-    eyebrow: 'Detection engineering',
-    title: 'Detection Rules',
-    sub: 'Rule registry with thresholds, windows, and verified positive/negative test cases.',
+    eyebrow: 'meta.rules.eyebrow',
+    title: 'meta.rules.title',
+    sub: 'meta.rules.sub',
   },
   sources: {
-    eyebrow: 'Ingestion',
-    title: 'Log Sources',
-    sub: 'Track where telemetry comes from and keep ingestion health visible.',
+    eyebrow: 'meta.sources.eyebrow',
+    title: 'meta.sources.title',
+    sub: 'meta.sources.sub',
   },
 };
 
@@ -84,6 +86,7 @@ function tabFromLocation(): Tab {
 }
 
 export default function App() {
+  const { t, roleLabel } = useI18n();
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [tab, setTab] = useState<Tab>(() => tabFromLocation());
   const [refreshKey, setRefreshKey] = useState(0);
@@ -172,45 +175,55 @@ export default function App() {
             <div className="brand-name">
               Sentinel<span>X</span>
             </div>
-            <div className="brand-sub">Operations desk</div>
+            <div className="brand-sub">{t('brand.sub')}</div>
           </div>
         </div>
 
-        <nav className="nav" aria-label="Main navigation">
-          <div className="nav-label">Workspace</div>
-          {TABS.map((t, index) => (
-            <button
-              key={t.id}
-              className={`nav-item ${tab === t.id ? 'active' : ''}`}
-              onClick={() => goTab(t.id)}
-              title={t.label}
-              aria-label={t.label}
-            >
-              <span className="nav-icon">{t.icon}</span>
-              <span className="nav-text">{t.label}</span>
-              <span className="nav-index">{String(index + 1).padStart(2, '0')}</span>
-              {t.id === 'alerts' && counts.alerts > 0 && <span className="nav-count">{counts.alerts}</span>}
-              {t.id === 'incidents' && counts.incidents > 0 && <span className="nav-count">{counts.incidents}</span>}
-              {t.id === 'events' && counts.events > 0 && <span className="nav-count">{counts.events}</span>}
-            </button>
-          ))}
+        <nav className="nav" aria-label={t('nav.main')}>
+          <div className="nav-label">{t('nav.workspace')}</div>
+          {TABS.map((item, index) => {
+            const label = t(item.labelKey);
+            return (
+              <button
+                key={item.id}
+                className={`nav-item ${tab === item.id ? 'active' : ''}`}
+                onClick={() => goTab(item.id)}
+                title={label}
+                aria-label={label}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-text">{label}</span>
+                <span className="nav-index">{String(index + 1).padStart(2, '0')}</span>
+                {item.id === 'alerts' && counts.alerts > 0 && <span className="nav-count">{counts.alerts}</span>}
+                {item.id === 'incidents' && counts.incidents > 0 && (
+                  <span className="nav-count">{counts.incidents}</span>
+                )}
+                {item.id === 'events' && counts.events > 0 && <span className="nav-count">{counts.events}</span>}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">
           <div className="sidebar-status">
-            <span className="status-beacon" /> local / in-memory
+            <span className="status-beacon" /> {t('nav.localStatus')}
           </div>
           <div className="user-line">
             <span className="avatar">{initials}</span>
             <div className="user-meta">
               <div className="user-name">{session.email.split('@')[0]}</div>
-              <div className="user-role">{session.role}</div>
+              <div className="user-role">{roleLabel(session.role)}</div>
             </div>
-            <button className="btn ghost icon-only" onClick={logout} title="Sign out" aria-label="Sign out">
+            <button
+              className="btn ghost icon-only"
+              onClick={logout}
+              title={t('nav.signOut')}
+              aria-label={t('nav.signOut')}
+            >
               <IconLogout size={16} />
             </button>
           </div>
-          <div className="build-stamp">sentinelx / build 0.4.2</div>
+          <div className="build-stamp">{t('nav.build')}</div>
         </div>
       </aside>
 
@@ -219,24 +232,25 @@ export default function App() {
           <div className="workspace-rail" aria-hidden="true">
             <span>SX / SecOps</span>
             <span className="rail-line" />
-            <span>workspace: local</span>
-            <span>build 0.4.2</span>
+            <span>{t('nav.railWorkspace')}</span>
+            <span>{t('nav.railBuild')}</span>
           </div>
 
           <header className="topbar">
             <div>
               <div className="page-eyebrow">
-                <IconActivity size={13} /> {meta.eyebrow}
+                <IconActivity size={13} /> {t(meta.eyebrow)}
               </div>
-              <h1 className="page-title">{meta.title}</h1>
-              <p className="page-sub">{meta.sub}</p>
+              <h1 className="page-title">{t(meta.title)}</h1>
+              <p className="page-sub">{t(meta.sub)}</p>
             </div>
             <div className="topbar-actions">
+              <LanguageSwitch />
               <span className="live-pill">
-                <span className="live-dot" /> Live
+                <span className="live-dot" /> {t('common.live')}
               </span>
               <button className="btn" onClick={() => setRefreshKey((k) => k + 1)}>
-                <IconRefresh size={15} /> Refresh
+                <IconRefresh size={15} /> {t('common.refresh')}
               </button>
             </div>
           </header>

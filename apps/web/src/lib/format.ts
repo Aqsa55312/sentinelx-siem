@@ -1,8 +1,8 @@
-export function fmtDateTime(iso?: string): string {
+export function fmtDateTime(iso?: string, locale?: string): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(locale, {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
@@ -12,18 +12,19 @@ export function fmtDateTime(iso?: string): string {
   });
 }
 
-export function timeAgo(iso?: string): string {
+export function timeAgo(iso?: string, locale = 'en-US'): string {
   if (!iso) return '—';
   const d = new Date(iso).getTime();
   if (Number.isNaN(d)) return iso;
   const diff = Math.max(0, Date.now() - d);
   const min = Math.floor(diff / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min}m ago`;
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'narrow' });
+  if (min < 1) return rtf.format(0, 'second');
+  if (min < 60) return rtf.format(-min, 'minute');
   const hrs = Math.floor(min / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return rtf.format(-hrs, 'hour');
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return rtf.format(-days, 'day');
 }
 
 export const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
@@ -35,11 +36,6 @@ export function riskTone(score: number): Severity | 'info' {
   if (score >= 50) return 'medium';
   if (score >= 25) return 'low';
   return 'info';
-}
-
-export function riskLabel(score: number): string {
-  const t = riskTone(score);
-  return t === 'info' ? 'Informational' : t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 export function titleCase(s?: string): string {

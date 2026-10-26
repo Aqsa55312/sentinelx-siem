@@ -1,4 +1,5 @@
-import { riskLabel, riskTone } from '../lib/format';
+import { riskTone } from '../lib/format';
+import { useI18n } from '../i18n';
 
 type Props = {
   score: number;
@@ -9,13 +10,14 @@ type Props = {
  * The score is a prototype heuristic, never a compromise probability.
  */
 export default function RiskMeter({ score }: Props) {
+  const { t, riskLabel } = useI18n();
   const tone = riskTone(score);
 
   return (
     <div
       className={`risk-meter ${tone}`}
       role="progressbar"
-      aria-label="Risk score"
+      aria-label={t('risk.score')}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={score}
@@ -23,15 +25,15 @@ export default function RiskMeter({ score }: Props) {
       <div className="risk-meter-top">
         <span className="risk-value">{score}</span>
         <span className="risk-denom">/100</span>
-        <span className="risk-label">{riskLabel(score)}</span>
+        <span className="risk-label">{riskLabel(tone)}</span>
       </div>
       <div className="risk-track">
         <div className={`risk-fill ${tone}`} style={{ width: `${Math.max(3, score)}%` }} />
       </div>
       <div className="risk-scale">
-        <span>0 · info</span>
-        <span>50 · medium</span>
-        <span>100 · critical</span>
+        <span>{t('risk.scaleLow')}</span>
+        <span>{t('risk.scaleMid')}</span>
+        <span>{t('risk.scaleHigh')}</span>
       </div>
     </div>
   );

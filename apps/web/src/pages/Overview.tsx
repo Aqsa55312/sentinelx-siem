@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { riskTone, SEVERITIES, timeAgo, titleCase } from '../lib/format';
+import { riskTone, SEVERITIES, titleCase } from '../lib/format';
+import { useI18n } from '../i18n';
 import { IconActivity, IconAlert, IconArrowRight, IconBell, IconCase, IconDatabase, IconList } from '../components/Icons';
 
 type Props = {
@@ -18,6 +19,7 @@ function dayKey(d: Date) {
 }
 
 export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onViewAllAlerts, onViewAllIncidents }: Props) {
+  const { t, locale, statusLabel, severityLabel, timeAgo } = useI18n();
   const [data, setData] = useState<any>(null);
   const [alerts, setAlerts] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
@@ -46,7 +48,7 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
       d.setDate(d.getDate() - i);
       days.push({
         key: dayKey(d),
-        label: d.toLocaleDateString(undefined, { weekday: 'short' }),
+        label: d.toLocaleDateString(locale, { weekday: 'short' }),
         counts: { critical: 0, high: 0, medium: 0, low: 0 },
         total: 0,
       });
@@ -61,7 +63,7 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
       bucket.total += 1;
     }
     return days;
-  }, [alerts]);
+  }, [alerts, locale]);
 
   const maxTrend = Math.max(1, ...trend.map((d) => d.total));
   const bySeverity = data?.alerts_by_severity ?? {};
@@ -89,27 +91,27 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
       <div className="kpi-grid">
         <Kpi
           icon={<IconActivity size={17} />}
-          label="Total events"
+          label={t('overview.kpi.events')}
           value={data ? data.total_events : '—'}
-          foot="Normalized and searchable"
+          foot={t('overview.kpi.eventsFoot')}
         />
         <Kpi
           icon={<IconBell size={17} />}
-          label="Total alerts"
+          label={t('overview.kpi.alerts')}
           value={data ? data.total_alerts ?? alerts.length : '—'}
-          foot="Rule detections, all severities"
+          foot={t('overview.kpi.alertsFoot')}
         />
         <Kpi
           icon={<IconAlert size={17} />}
-          label="Active incidents"
+          label={t('overview.kpi.incidents')}
           value={data ? data.active_incidents : '—'}
-          foot={data ? `${data.active_alerts ?? 0} active alerts` : '—'}
+          foot={data ? t('common.activeAlertCount', { count: data.active_alerts ?? 0 }) : '—'}
         />
         <Kpi
           icon={<IconDatabase size={17} />}
-          label="Log sources"
+          label={t('overview.kpi.sources')}
           value={data ? sources.length : '—'}
-          foot={data ? `${healthy}/${sources.length} healthy` : '—'}
+          foot={data ? t('common.healthySources', { healthy, total: sources.length }) : '—'}
         />
       </div>
 
@@ -117,22 +119,24 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
         <section className="panel span-8">
           <div className="panel-head">
             <div>
-              <div className="panel-title">Alert volume</div>
-              <div className="panel-sub">Detections per day, stacked by severity (last {DAYS} days)</div>
+              <div className="panel-title">{t('overview.alertVolume')}</div>
+              <div className="panel-sub">{t('overview.alertVolumeSub', { days: DAYS })}</div>
             </div>
             <div className="panel-actions">
-              <span className="chip">
-                <b>{alerts.length}</b> alerts
-              </span>
+              <span className="chip">{t('common.alertCount', { count: alerts.length })}</span>
             </div>
           </div>
 
           {alerts.length === 0 ? (
-            <div className="trend-empty">No detections yet. Upload a scenario from Event Explorer.</div>
+            <div className="trend-empty">{t('overview.alertVolumeEmpty')}</div>
           ) : (
             <div className="trend">
               {trend.map((d) => (
-                <div className="trend-col" key={d.key} title={`${d.key}: ${d.total} alerts`}>
+                <div
+                  className="trend-col"
+                  key={d.key}
+                  title={`${d.key}: ${t('common.alertCount', { count: d.total })}`}
+                >
                   <div className="trend-stack">
                     {[...SEVERITIES].reverse().map((sev) => {
                       const c = d.counts[sev] ?? 0;
@@ -156,8 +160,8 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
         <section className="panel span-4">
           <div className="panel-head">
             <div>
-              <div className="panel-title">Severity split</div>
-              <div className="panel-sub">All stored alerts</div>
+              <div className="panel-title">{t('overview.severitySplit')}</div>
+              <div className="panel-sub">{t('overview.severitySplitSub')}</div>
             </div>
           </div>
           <div className="bars">
@@ -165,7 +169,7 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
               const n = bySeverity[sev] ?? 0;
               return (
                 <div className="bar-row" key={sev}>
-                  <span className="bar-name">{sev}</span>
+                  <span className="bar-name">{severityLabel(sev)}</span>
                   <span className="bar-track">
                     <span className={`bar-fill ${sev}`} style={{ width: `${(n / maxSev) * 100}%` }} />
                   </span>
@@ -175,29 +179,28 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
             })}
           </div>
           <div className="section-label" style={{ marginBottom: 0 }}>
-            Risk model
+            {t('overview.riskModel')}
           </div>
           <p className="muted tiny" style={{ marginTop: 6 }}>
-            R = min(100, 0.4S + 0.3C + 0.2A + 0.1B). Asset criticality A comes from the source registry (default 50).
-            Prototype weights — not a probability of compromise.
+            {t('overview.riskModelText')}
           </p>
         </section>
 
         <section className="panel span-7">
           <div className="panel-head">
             <div>
-              <div className="panel-title">Recent detections</div>
-              <div className="panel-sub">Newest first — click to open evidence</div>
+              <div className="panel-title">{t('overview.recent')}</div>
+              <div className="panel-sub">{t('overview.recentSub')}</div>
             </div>
             <div className="panel-actions">
               <button className="btn ghost sm" onClick={onViewAllAlerts}>
-                View all
+                {t('common.viewAll')}
               </button>
             </div>
           </div>
 
           {recent.length === 0 ? (
-            <EmptyState title="No alerts yet" text="Run a simulator fixture to generate detections." />
+            <EmptyState title={t('overview.noAlerts')} text={t('overview.noAlertsText')} />
           ) : (
             <div className="feed">
               {recent.map((a) => {
@@ -208,14 +211,16 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
                     <span className="feed-main">
                       <span className="feed-title">{a.title}</span>
                       <span className="feed-meta">
-                        <span className={`sev ${a.severity}`}>{a.severity}</span>
+                        <span className={`sev ${a.severity}`}>{severityLabel(a.severity)}</span>
                         <span className="mono">{a.rule_id}</span>
                         <span>·</span>
                         <span>{timeAgo(a.created_at)}</span>
                       </span>
                     </span>
                     <span className="feed-right">
-                      <span className={`risk-pill ${tone}`}>risk {a.risk_score}</span>
+                      <span className={`risk-pill ${tone}`}>
+                        {t('common.risk')} {a.risk_score}
+                      </span>
                     </span>
                   </button>
                 );
@@ -227,13 +232,13 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
         <section className="panel span-5">
           <div className="panel-head">
             <div>
-              <div className="panel-title">Top detection rules</div>
-              <div className="panel-sub">Alerts produced per rule</div>
+              <div className="panel-title">{t('overview.topRules')}</div>
+              <div className="panel-sub">{t('overview.topRulesSub')}</div>
             </div>
           </div>
 
           {ruleEntries.length === 0 ? (
-            <EmptyState title="No rule activity" text="Rule hits will appear here." />
+            <EmptyState title={t('overview.noRuleActivity')} text={t('overview.noRuleActivityText')} />
           ) : (
             <div className="bars">
               {ruleEntries.map(([rule, n]) => (
@@ -250,9 +255,9 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
             </div>
           )}
 
-          <div className="section-label">Log sources</div>
+          <div className="section-label">{t('nav.sources')}</div>
           {sources.length === 0 ? (
-            <p className="muted small">No sources registered.</p>
+            <p className="muted small">{t('overview.noSources')}</p>
           ) : (
             sources.slice(0, 5).map((s) => (
               <div className="source-row" key={s.source_id}>
@@ -270,24 +275,19 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
         <section className="panel span-12">
           <div className="panel-head">
             <div>
-              <div className="panel-title">Incident queue</div>
-              <div className="panel-sub">Correlated cases ordered by last activity</div>
+              <div className="panel-title">{t('overview.incidentQueue')}</div>
+              <div className="panel-sub">{t('overview.incidentQueueSub')}</div>
             </div>
             <div className="panel-actions">
-              <span className="chip">
-                <b>{incidents.length}</b> total
-              </span>
+              <span className="chip">{t('overview.totalCount', { count: incidents.length })}</span>
               <button className="btn ghost sm" onClick={onViewAllIncidents}>
-                View all
+                {t('common.viewAll')}
               </button>
             </div>
           </div>
 
           {incidentQueue.length === 0 ? (
-            <EmptyState
-              title="No active incidents"
-              text="Alerts sharing an IP or username inside 24h are grouped automatically after ingestion."
-            />
+            <EmptyState title={t('overview.noIncidents')} text={t('overview.noIncidentsText')} />
           ) : (
             <div className="incident-queue">
               {incidentQueue.map((i) => (
@@ -296,14 +296,16 @@ export default function Overview({ refreshKey, onOpenAlert, onOpenIncident, onVi
                   <span className="queue-main">
                     <span className="queue-title">{i.title}</span>
                     <span className="queue-meta">
-                      <span className={`status-tag ${i.status}`}>{titleCase(i.status)}</span>
-                      <span>{i.alert_count} alert{i.alert_count === 1 ? '' : 's'}</span>
+                      <span className={`status-tag ${i.status}`}>{statusLabel(i.status)}</span>
+                      <span>{t('common.alertCount', { count: i.alert_count })}</span>
                       <span>·</span>
                       <span>{timeAgo(i.updated_at)}</span>
                     </span>
                   </span>
                   <span className="queue-side">
-                    <span className={`risk-pill ${riskTone(i.risk_score ?? 0)}`}>risk {i.risk_score}</span>
+                    <span className={`risk-pill ${riskTone(i.risk_score ?? 0)}`}>
+                      {t('common.risk')} {i.risk_score}
+                    </span>
                     <IconArrowRight size={15} />
                   </span>
                 </button>

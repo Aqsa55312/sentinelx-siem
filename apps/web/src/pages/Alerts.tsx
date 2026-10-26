@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { fmtDateTime, riskTone, timeAgo, titleCase } from '../lib/format';
+import { riskTone } from '../lib/format';
+import { useI18n } from '../i18n';
 import { IconArrowRight, IconBell, IconCase, IconClock, IconShield } from '../components/Icons';
 import Meta from '../components/Meta';
 import RiskMeter from '../components/RiskMeter';
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, onOpenIncident }: Props) {
+  const { t, fmtDateTime, timeAgo, statusLabel, severityLabel, eventTypeLabel } = useI18n();
   const [alerts, setAlerts] = useState<any[]>([]);
   const [selected, setSelected] = useState<string | null>(focusId ?? null);
   const [detail, setDetail] = useState<any>(null);
@@ -68,14 +70,12 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
     let reason = '';
     if (needsReason) {
       const input = window.prompt(
-        status === 'false_positive'
-          ? 'Why is this alert a false positive? (required, audit-logged)'
-          : 'Reason for closing this alert? (required, audit-logged)',
+        status === 'false_positive' ? t('alerts.falsePositivePrompt') : t('alerts.closePrompt'),
       );
       if (input === null) return;
       reason = input.trim();
       if (!reason) {
-        setActionErr('A reason is required for this action.');
+        setActionErr(t('common.reasonRequired'));
         return;
       }
     }
@@ -104,9 +104,9 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
         <section className="panel" style={{ padding: 14 }}>
           <div className="panel-head" style={{ padding: '4px 6px 10px', marginBottom: 4 }}>
             <div>
-              <div className="panel-title">Detections</div>
+              <div className="panel-title">{t('alerts.detections')}</div>
               <div className="panel-sub">
-                {alerts.length} alert{alerts.length === 1 ? '' : 's'} · click to inspect
+                {t('alerts.detectionsSub', { alerts: t('common.alertCount', { count: alerts.length }) })}
               </div>
             </div>
           </div>
@@ -116,8 +116,8 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
               <span className="empty-icon">
                 <IconBell size={20} />
               </span>
-              <span className="empty-title">No alerts yet</span>
-              <span className="small">Upload a scenario from Event Explorer to trigger detection.</span>
+              <span className="empty-title">{t('alerts.noAlerts')}</span>
+              <span className="small">{t('alerts.noAlertsText')}</span>
             </div>
           ) : (
             <div className="alert-list">
@@ -135,7 +135,7 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
                         {a.title}
                       </span>
                       <span className="alert-item-meta">
-                        <span className={`status-tag ${a.status}`}>{titleCase(a.status)}</span>
+                        <span className={`status-tag ${a.status}`}>{statusLabel(a.status)}</span>
                         <span className="mono">{a.rule_id}</span>
                         <span>·</span>
                         <span>{timeAgo(a.created_at)}</span>
@@ -155,8 +155,8 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
               <span className="empty-icon">
                 <IconShield size={20} />
               </span>
-              <span className="empty-title">Select an alert</span>
-              <span className="small">The evidence trail, risk reasoning, and rule metadata appear here.</span>
+              <span className="empty-title">{t('alerts.select')}</span>
+              <span className="small">{t('alerts.selectText')}</span>
             </div>
           ) : loadingDetail && !detail ? (
             <div>
@@ -173,15 +173,18 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
                 <div style={{ minWidth: 0 }}>
                   <div className="detail-title">{detail.alert.title}</div>
                   <div className="detail-sub">
-                    {detail.alert.rule_id} · v{detail.alert.rule_version} · detected {timeAgo(detail.alert.created_at)}
+                    {detail.alert.rule_id} · v{detail.alert.rule_version} ·{' '}
+                    {t('alerts.detectedAt', { time: timeAgo(detail.alert.created_at) })}
                   </div>
                 </div>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <span className={`sev ${detail.alert.severity}`}>{detail.alert.severity}</span>
-                  <span className="chip">status: <b>{detail.alert.status}</b></span>
+                  <span className={`sev ${detail.alert.severity}`}>{severityLabel(detail.alert.severity)}</span>
+                  <span className="chip">
+                    {t('common.status')}: <b>{statusLabel(detail.alert.status)}</b>
+                  </span>
                   {detail.alert.incident_id && (
                     <button className="btn sm" onClick={() => onOpenIncident(detail.alert.incident_id)}>
-                      <IconCase size={14} /> Incident
+                      <IconCase size={14} /> {t('alerts.incident')}
                     </button>
                   )}
                 </div>
@@ -190,61 +193,68 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
               <RiskMeter score={detail.alert.risk_score} />
 
               <div className="detail-actions">
-                <span className="section-label" style={{ margin: 0 }}>Triage</span>
-                <span className={`status-tag ${status}`}>{titleCase(status)}</span>
+                <span className="section-label" style={{ margin: 0 }}>{t('alerts.triage')}</span>
+                <span className={`status-tag ${status}`}>{statusLabel(status)}</span>
                 <div className="action-row">
                   {canWrite && (status === 'new' || status === 'triaged') && (
                     <button className="btn sm" disabled={busy} onClick={() => updateStatus('triaged')}>
-                      Acknowledge
+                      {t('alerts.acknowledge')}
                     </button>
                   )}
                   {canWrite && active && status !== 'investigating' && (
                     <button className="btn sm" disabled={busy} onClick={() => updateStatus('investigating')}>
-                      Investigate
+                      {t('alerts.investigate')}
                     </button>
                   )}
                   {canWrite && status === 'investigating' && (
                     <button className="btn sm" disabled={busy} onClick={() => updateStatus('resolved')}>
-                      Mark resolved
+                      {t('alerts.markResolved')}
                     </button>
                   )}
                   {canWrite && status === 'resolved' && (
                     <button className="btn sm" disabled={busy} onClick={() => updateStatus('closed', true)}>
-                      Close
+                      {t('alerts.close')}
                     </button>
                   )}
                   {canWrite && active && (
                     <button className="btn ghost sm" disabled={busy} onClick={() => updateStatus('false_positive', true)}>
-                      False positive
+                      {t('alerts.falsePositive')}
                     </button>
                   )}
-                  {!canWrite && <span className="chip">read-only role</span>}
+                  {!canWrite && <span className="chip">{t('common.readOnly')}</span>}
                 </div>
               </div>
 
               {actionErr && <div className="error-box" style={{ marginBottom: 14 }}>{actionErr}</div>}
               {detail.alert.status_reason && (
                 <div className="reason-box subtle" style={{ marginBottom: 18 }}>
-                  <b>{titleCase(detail.alert.status)} reason:</b> {detail.alert.status_reason}
+                  <b>{t('alerts.statusReason', { status: statusLabel(detail.alert.status) })}</b>{' '}
+                  {detail.alert.status_reason}
                 </div>
               )}
 
               <div className="reason-box">{detail.alert.reason}</div>
 
               <div className="meta-grid">
-                <Meta label="Rule" value={<span className="mono">{detail.alert.rule_id}</span>} />
-                <Meta label="Rule version" value={`v${detail.alert.rule_version}`} />
-                <Meta label="Window start" value={<span className="mono">{fmtDateTime(detail.alert.window_start)}</span>} />
-                <Meta label="Window end" value={<span className="mono">{fmtDateTime(detail.alert.window_end)}</span>} />
+                <Meta label={t('alerts.rule')} value={<span className="mono">{detail.alert.rule_id}</span>} />
+                <Meta label={t('alerts.ruleVersion')} value={`v${detail.alert.rule_version}`} />
+                <Meta
+                  label={t('alerts.windowStart')}
+                  value={<span className="mono">{fmtDateTime(detail.alert.window_start)}</span>}
+                />
+                <Meta
+                  label={t('alerts.windowEnd')}
+                  value={<span className="mono">{fmtDateTime(detail.alert.window_end)}</span>}
+                />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div className="section-label" style={{ margin: 0 }}>
-                  Evidence timeline · {evidence.length} event{evidence.length === 1 ? '' : 's'}
+                  {t('alerts.evidenceTimeline', { events: t('common.eventCount', { count: evidence.length }) })}
                 </div>
                 {firstIp && (
                   <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => onViewEvents(firstIp)}>
-                    View related events <IconArrowRight size={14} />
+                    {t('alerts.viewRelated')} <IconArrowRight size={14} />
                   </button>
                 )}
               </div>
@@ -264,21 +274,21 @@ export default function Alerts({ refreshKey, focusId, canWrite, onViewEvents, on
                       }`}
                     />
                     <div className="timeline-top">
-                      <span className="timeline-type">{e.event_type}</span>
-                      <span className={`sev ${e.severity}`}>{e.severity}</span>
+                      <span className="timeline-type">{eventTypeLabel(e.event_type)}</span>
+                      <span className={`sev ${e.severity}`}>{severityLabel(e.severity)}</span>
                       <span className="timeline-time">
                         <IconClock size={11} style={{ marginRight: 4, verticalAlign: -1 }} />
                         {fmtDateTime(e.timestamp)}
                       </span>
                     </div>
                     <div className="timeline-meta">
-                      <span className="mono">{e.src_ip || 'no src_ip'}</span>
-                      <span>{e.username || 'unknown user'}</span>
+                      <span className="mono">{e.src_ip || t('common.noSrcIp')}</span>
+                      <span>{e.username || t('common.unknownUser')}</span>
                       <span className="mono">{e.event_id}</span>
                     </div>
                   </div>
                 ))}
-                {evidence.length === 0 && <p className="muted small">No linked evidence events.</p>}
+                {evidence.length === 0 && <p className="muted small">{t('alerts.noEvidence')}</p>}
               </div>
             </>
           )}

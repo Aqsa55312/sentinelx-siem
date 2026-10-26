@@ -28,7 +28,7 @@ Operational companion to the README. Tracks what is actually implemented and how
 | Correlation | Done | 24h window; shared `ip:` / `user:` indicators; source-only overlap ignored; auto-creates incidents as `detection-engine` |
 | Incident workflow | Done | `new → triaged → investigating → contained → resolved → closed` plus `false_positive`; invalid jumps rejected; `closed`/`false_positive` require reason |
 | Incident collaboration | Done | Assignment, investigation notes, activity timeline, Markdown export, linked-alert status sync |
-| React dashboard | Done | Overview (+incident queue), Event Explorer, Alerts triage, Incidents, Rules, Sources |
+| React dashboard | Done | Overview (+incident queue), Event Explorer, Alerts triage, Incidents, Rules, Sources; EN/ID UI switch with locale-aware dates; animated login |
 | Audit log | Partial | Auth, ingest, detection, source creation, alert/incident changes recorded internally; no read UI/API yet |
 
 ## Not implemented yet

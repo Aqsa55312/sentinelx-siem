@@ -287,6 +287,35 @@ button { -webkit-tap-highlight-color: transparent; }
 .page-sub { max-width: 640px; margin-top: 7px; font-size: 12.5px; color: var(--text-2); }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
+.lang-switch {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+.lang-switch button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  padding: 7px 7px 6px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.lang-switch button + button { border-left: 1px solid var(--line); }
+.lang-switch button:hover:not(.active) { background: var(--surface-2); color: var(--text); }
+.lang-switch button.active { background: var(--accent); color: var(--bg-deep); font-weight: 600; }
+.lang-switch button:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+.lang-switch.compact button { padding: 6px 6px 5px; }
+
 .live-pill {
   display: inline-flex;
   align-items: center;
@@ -1126,6 +1155,7 @@ details > summary {
 }
 .login-brand .brand { padding: 0; }
 .login-brand-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.login-top-actions { display: flex; align-items: center; gap: 12px; }
 .login-index {
   font-family: var(--mono);
   font-size: 8.5px;

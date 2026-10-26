@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { useI18n } from '../i18n';
 import { IconList, IconSliders } from '../components/Icons';
 
 type Props = { refreshKey: number };
 
 export default function Rules({ refreshKey }: Props) {
+  const { t, severityLabel } = useI18n();
   const [rules, setRules] = useState<any[]>([]);
   const [err, setErr] = useState('');
 
@@ -25,18 +27,12 @@ export default function Rules({ refreshKey }: Props) {
             <IconSliders size={17} />
           </span>
           <div>
-            <div className="panel-title">Detection rule registry</div>
-            <div className="panel-sub">
-              Read-only in this slice · every rule ships with positive &amp; negative test cases in the API test suite
-            </div>
+            <div className="panel-title">{t('rules.title')}</div>
+            <div className="panel-sub">{t('rules.sub')}</div>
           </div>
           <div className="panel-actions">
-            <span className="chip">
-              <b>{rules.length}</b> rules
-            </span>
-            <span className="chip">
-              <b>{enabled}</b> enabled
-            </span>
+            <span className="chip">{t('rules.count', { count: rules.length })}</span>
+            <span className="chip">{t('rules.enabledCount', { count: enabled })}</span>
           </div>
         </div>
       </div>
@@ -49,8 +45,8 @@ export default function Rules({ refreshKey }: Props) {
             <span className="empty-icon">
               <IconList size={20} />
             </span>
-            <span className="empty-title">No rules loaded</span>
-            <span className="small">The registry is served from the API at /api/v1/rules.</span>
+            <span className="empty-title">{t('rules.emptyTitle')}</span>
+            <span className="small">{t('rules.emptyText')}</span>
           </div>
         </div>
       ) : (
@@ -63,7 +59,7 @@ export default function Rules({ refreshKey }: Props) {
                   <span className={`dot ${r.enabled ? 'ok' : 'off'}`} />
                   <span className="rule-id">{r.rule_id}</span>
                   <span className={`sev ${r.severity}`} style={{ marginLeft: 'auto' }}>
-                    {r.severity}
+                    {severityLabel(r.severity)}
                   </span>
                 </div>
 
@@ -80,7 +76,7 @@ export default function Rules({ refreshKey }: Props) {
                   </span>
                   <span className={`chip`}>
                     <span className={`dot ${r.enabled ? 'ok' : 'off'}`} />
-                    {r.enabled ? 'enabled' : 'disabled'}
+                    {r.enabled ? t('rules.enabled') : t('rules.disabled')}
                   </span>
                   {Object.entries(config).map(([k, v]) => (
                     <span className="chip" key={k} title={`${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`}>
@@ -91,10 +87,10 @@ export default function Rules({ refreshKey }: Props) {
 
                 {(r.test_cases ?? []).length > 0 && (
                   <details>
-                    <summary>Test cases ({r.test_cases.length})</summary>
+                    <summary>{t('rules.testCases', { count: r.test_cases.length })}</summary>
                     <ul className="rule-tests">
-                      {(r.test_cases ?? []).map((t: string, i: number) => (
-                        <li key={i}>{t}</li>
+                      {(r.test_cases ?? []).map((testCase: string, i: number) => (
+                        <li key={i}>{testCase}</li>
                       ))}
                     </ul>
                   </details>

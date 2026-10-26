@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { fmtDateTime, titleCase } from '../lib/format';
+import { titleCase } from '../lib/format';
+import { useI18n } from '../i18n';
 import { IconDatabase, IconPlus } from '../components/Icons';
 
 type Props = { refreshKey: number };
@@ -8,6 +9,7 @@ type Props = { refreshKey: number };
 const SOURCE_TYPES = ['simulator', 'auth', 'web', 'api', 'host', 'cloud'];
 
 export default function Sources({ refreshKey }: Props) {
+  const { t, fmtDateTime, sourceStatusLabel } = useI18n();
   const [sources, setSources] = useState<any[]>([]);
   const [name, setName] = useState('');
   const [stype, setStype] = useState('simulator');
@@ -37,7 +39,7 @@ export default function Sources({ refreshKey }: Props) {
     setBusy(true);
     try {
       await api.createSource(name, stype, criticality);
-      setNotice(`Source "${name}" registered.`);
+      setNotice(t('sources.registered', { name }));
       setName('');
       setCriticality(50);
       await load();
@@ -58,9 +60,12 @@ export default function Sources({ refreshKey }: Props) {
             <IconDatabase size={17} />
           </span>
           <div>
-            <div className="panel-title">Registered log sources</div>
+            <div className="panel-title">{t('sources.title')}</div>
             <div className="panel-sub">
-              {sources.length} source{sources.length === 1 ? '' : 's'} · {healthy} healthy
+              {t('sources.sub', {
+                sources: t('common.sourceCount', { count: sources.length }),
+                healthy,
+              })}
             </div>
           </div>
         </div>
@@ -73,20 +78,20 @@ export default function Sources({ refreshKey }: Props) {
             <span className="empty-icon">
               <IconDatabase size={20} />
             </span>
-            <span className="empty-title">No sources registered</span>
-            <span className="small">Add a source to group incoming events and track ingestion health.</span>
+            <span className="empty-title">{t('sources.emptyTitle')}</span>
+            <span className="small">{t('sources.emptyText')}</span>
           </div>
         ) : (
           <div className="table-wrap" style={{ maxHeight: 'none' }}>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Source</th>
-                  <th>ID</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Criticality</th>
-                  <th>Created</th>
+                  <th>{t('sources.source')}</th>
+                  <th>{t('sources.id')}</th>
+                  <th>{t('sources.type')}</th>
+                  <th>{t('sources.status')}</th>
+                  <th>{t('sources.criticality')}</th>
+                  <th>{t('sources.created')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -103,7 +108,9 @@ export default function Sources({ refreshKey }: Props) {
                       <span className="chip">{titleCase(s.source_type)}</span>
                     </td>
                     <td>
-                      <span className={`sev ${s.status === 'healthy' ? 'low' : 'info'}`}>{s.status}</span>
+                      <span className={`sev ${s.status === 'healthy' ? 'low' : 'info'}`}>
+                        {sourceStatusLabel(s.status)}
+                      </span>
                     </td>
                     <td>
                       <div className="crit-cell">
@@ -128,36 +135,36 @@ export default function Sources({ refreshKey }: Props) {
       <section className="panel span-4">
         <div className="panel-head">
           <div>
-            <div className="panel-title">Register a source</div>
-            <div className="panel-sub">Requires analyst or admin role</div>
+            <div className="panel-title">{t('sources.register')}</div>
+            <div className="panel-sub">{t('sources.registerSub')}</div>
           </div>
         </div>
 
         <form onSubmit={create} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label className="field">
-            <span>Name</span>
+            <span>{t('sources.name')}</span>
             <input
               className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Auth Gateway (staging)"
+              placeholder={t('sources.namePlaceholder')}
               required
             />
           </label>
 
           <label className="field">
-            <span>Type</span>
+            <span>{t('sources.type')}</span>
             <select className="select" value={stype} onChange={(e) => setStype(e.target.value)}>
-              {SOURCE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {SOURCE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {titleCase(type)}
                 </option>
               ))}
             </select>
           </label>
 
           <label className="field">
-            <span>Asset criticality ({criticality}/100)</span>
+            <span>{t('sources.criticalityLabel', { value: criticality })}</span>
             <input
               className="input"
               type="range"
@@ -167,21 +174,18 @@ export default function Sources({ refreshKey }: Props) {
               value={criticality}
               onChange={(e) => setCriticality(Number(e.target.value))}
             />
-            <span className="muted tiny">
-              Feeds the asset component of risk scoring. Higher = more business impact when this source is involved.
-            </span>
+            <span className="muted tiny">{t('sources.criticalityHelp')}</span>
           </label>
 
           <button className="btn primary" type="submit" disabled={busy || !name.trim()}>
             <IconPlus size={15} />
-            {busy ? 'Registering…' : 'Add source'}
+            {busy ? t('sources.adding') : t('sources.add')}
           </button>
         </form>
 
-        <div className="section-label">Notes</div>
+        <div className="section-label">{t('sources.notes')}</div>
         <p className="muted tiny" style={{ lineHeight: 1.7 }}>
-          Sources group events for filtering and health reporting. Criticality is used by the detection engine when it
-          scores asset impact. The demo simulator posts to <span className="mono">source-demo-01</span> (criticality 70).
+          {t('sources.notesTextA')} <span className="mono">source-demo-01</span> {t('sources.notesTextB')}
         </p>
       </section>
     </div>

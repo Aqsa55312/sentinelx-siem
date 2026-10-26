@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api';
-import { fmtDateTime, timeAgo, titleCase } from '../lib/format';
+import { useI18n } from '../i18n';
 import { IconChevronDown, IconFile, IconSearch, IconUpload } from '../components/Icons';
 import Meta from '../components/Meta';
 
@@ -19,6 +19,7 @@ const EVENT_TYPES = [
 ];
 
 export default function Events({ refreshKey, preset }: Props) {
+  const { t, fmtDateTime, timeAgo, severityLabel, eventTypeLabel } = useI18n();
   const [events, setEvents] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -79,11 +80,16 @@ export default function Events({ refreshKey, preset }: Props) {
       const r = await api.upload(f, 'source-demo-01');
       const rejected = (r.rejected_parse ?? 0) + (r.rejected_schema ?? 0);
       setNotice(
-        `${f.name}: ${r.accepted} accepted, ${rejected} rejected, ${r.alerts_fired} alert${r.alerts_fired === 1 ? '' : 's'} fired`,
+        t('events.uploadResult', {
+          file: f.name,
+          accepted: r.accepted,
+          rejected,
+          alerts: r.alerts_fired,
+        }),
       );
       await load(0);
     } catch (e: any) {
-      setErr('Upload failed: ' + e.message);
+      setErr(t('events.uploadFailed', { message: e.message }));
     } finally {
       setUploading('');
     }
@@ -107,8 +113,8 @@ export default function Events({ refreshKey, preset }: Props) {
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-head">
           <div>
-            <div className="panel-title">Search events</div>
-            <div className="panel-sub">Filter by source IP, event type, account, or time range (UTC input, local display)</div>
+            <div className="panel-title">{t('events.searchTitle')}</div>
+            <div className="panel-sub">{t('events.searchSub')}</div>
           </div>
           <div className="panel-actions">
             <label className="upload" style={{ padding: '7px 11px' }}>
@@ -116,8 +122,8 @@ export default function Events({ refreshKey, preset }: Props) {
                 <IconUpload size={14} />
               </span>
               <span>
-                <span className="upload-title">{uploading ? 'Uploading…' : 'Upload log file'}</span>
-                <span className="upload-sub">.jsonl / .json · max 10MB</span>
+                <span className="upload-title">{uploading ? t('events.uploading') : t('events.uploadTitle')}</span>
+                <span className="upload-sub">{t('events.uploadSub')}</span>
               </span>
               <input type="file" accept=".jsonl,.json" onChange={onUpload} disabled={!!uploading} />
             </label>
@@ -126,38 +132,43 @@ export default function Events({ refreshKey, preset }: Props) {
 
         <div className="filters">
           <label className="field">
-            <span>Source IP</span>
+            <span>{t('events.sourceIp')}</span>
             <input className="input" placeholder="192.0.2.10" value={srcIp} onChange={(e) => setSrcIp(e.target.value)} />
           </label>
           <label className="field">
-            <span>Event type</span>
+            <span>{t('events.eventType')}</span>
             <select className="select" value={etype} onChange={(e) => setEtype(e.target.value)}>
-              <option value="">All types</option>
-              {EVENT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              <option value="">{t('events.allTypes')}</option>
+              {EVENT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {eventTypeLabel(type)}
                 </option>
               ))}
             </select>
           </label>
           <label className="field">
-            <span>Username</span>
-            <input className="input" placeholder="demo-user" value={username} onChange={(e) => setUsername(e.target.value)} />
+            <span>{t('events.username')}</span>
+            <input
+              className="input"
+              placeholder="demo-user"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
           </label>
           <label className="field">
-            <span>From</span>
+            <span>{t('events.from')}</span>
             <input className="input" type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
           <label className="field">
-            <span>To</span>
+            <span>{t('events.to')}</span>
             <input className="input" type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn primary" onClick={() => load(0)}>
-              <IconSearch size={15} /> Search
+              <IconSearch size={15} /> {t('events.search')}
             </button>
             <button className="btn" onClick={reset}>
-              Reset
+              {t('events.reset')}
             </button>
           </div>
         </div>
@@ -169,13 +180,11 @@ export default function Events({ refreshKey, preset }: Props) {
       <div className="panel flush">
         <div style={{ padding: '16px 20px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div>
-            <div className="panel-title">Event stream</div>
-            <div className="panel-sub">
-              {total} matching event{total === 1 ? '' : 's'} · page {page}/{pages}
-            </div>
+            <div className="panel-title">{t('events.stream')}</div>
+            <div className="panel-sub">{t('events.streamSub', { total, page, pages })}</div>
           </div>
           <span className="chip" style={{ marginLeft: 'auto' }}>
-            newest first
+            {t('common.newestFirst')}
           </span>
         </div>
 
@@ -190,20 +199,20 @@ export default function Events({ refreshKey, preset }: Props) {
             <span className="empty-icon">
               <IconFile size={20} />
             </span>
-            <span className="empty-title">No events match these filters</span>
-            <span className="small">Clear the filters or upload a JSONL fixture from the toolbar.</span>
+            <span className="empty-title">{t('events.emptyTitle')}</span>
+            <span className="small">{t('events.emptyText')}</span>
           </div>
         ) : (
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 150 }}>Timestamp</th>
-                  <th style={{ width: 180 }}>Event type</th>
-                  <th style={{ width: 130 }}>Source IP</th>
-                  <th style={{ width: 120 }}>User</th>
-                  <th>Message</th>
-                  <th style={{ width: 92 }}>Severity</th>
+                  <th style={{ width: 150 }}>{t('events.timestamp')}</th>
+                  <th style={{ width: 180 }}>{t('events.eventType')}</th>
+                  <th style={{ width: 130 }}>{t('events.sourceIp')}</th>
+                  <th style={{ width: 120 }}>{t('events.user')}</th>
+                  <th>{t('events.message')}</th>
+                  <th style={{ width: 92 }}>{t('common.severity')}</th>
                   <th style={{ width: 36 }} />
                 </tr>
               </thead>
@@ -217,7 +226,7 @@ export default function Events({ refreshKey, preset }: Props) {
                           {timeAgo(e.timestamp)}
                         </td>
                         <td>
-                          <span className="type-tag">{e.event_type}</span>
+                          <span className="type-tag">{eventTypeLabel(e.event_type)}</span>
                         </td>
                         <td className="mono">{e.src_ip || '—'}</td>
                         <td>{e.username || '—'}</td>
@@ -225,7 +234,7 @@ export default function Events({ refreshKey, preset }: Props) {
                           {e.message || '—'}
                         </td>
                         <td>
-                          <span className={`sev ${e.severity}`}>{e.severity}</span>
+                          <span className={`sev ${e.severity}`}>{severityLabel(e.severity)}</span>
                         </td>
                         <td style={{ textAlign: 'right', color: 'var(--muted)' }}>
                           <IconChevronDown size={14} style={open ? { transform: 'rotate(180deg)' } : undefined} />
@@ -237,18 +246,18 @@ export default function Events({ refreshKey, preset }: Props) {
                             <div style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 16 }}>
                               <div>
                                 <div className="section-label" style={{ margin: '0 0 8px' }}>
-                                  Event detail
+                                  {t('events.detail')}
                                 </div>
                                 <div className="meta-grid" style={{ gridTemplateColumns: '1fr 1fr', margin: 0 }}>
-                                  <Meta label="Event ID" value={<span className="mono">{e.event_id}</span>} />
-                                  <Meta label="Source" value={e.source_id || '—'} />
-                                  <Meta label="Timestamp (local)" value={fmtDateTime(e.timestamp)} />
-                                  <Meta label="Type" value={titleCase(e.event_type)} />
+                                  <Meta label={t('events.eventId')} value={<span className="mono">{e.event_id}</span>} />
+                                  <Meta label={t('events.source')} value={e.source_id || '—'} />
+                                  <Meta label={t('events.timestampLocal')} value={fmtDateTime(e.timestamp)} />
+                                  <Meta label={t('events.type')} value={eventTypeLabel(e.event_type)} />
                                 </div>
                               </div>
                               <div>
                                 <div className="section-label" style={{ margin: '0 0 8px' }}>
-                                  Attributes
+                                  {t('events.attributes')}
                                 </div>
                                 <pre
                                   style={{
@@ -281,13 +290,17 @@ export default function Events({ refreshKey, preset }: Props) {
         <div style={{ padding: '12px 20px 16px' }}>
           <div className="pager">
             <button className="btn sm" disabled={offset === 0} onClick={() => load(Math.max(0, offset - PAGE))}>
-              Previous
+              {t('common.previous')}
             </button>
             <button className="btn sm" disabled={offset + PAGE >= total} onClick={() => load(offset + PAGE)}>
-              Next
+              {t('common.next')}
             </button>
             <span className="pager-info">
-              Showing {total === 0 ? 0 : offset + 1}–{Math.min(offset + PAGE, total)} of {total}
+              {t('events.showing', {
+                from: total === 0 ? 0 : offset + 1,
+                to: Math.min(offset + PAGE, total),
+                total,
+              })}
             </span>
           </div>
         </div>

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api';
 import LoginBackdrop from '../components/LoginBackdrop';
+import LanguageSwitch from '../components/LanguageSwitch';
+import { useI18n } from '../i18n';
 import { IconActivity, IconShield } from '../components/Icons';
 
 type Props = {
@@ -8,12 +10,13 @@ type Props = {
 };
 
 const DEMO_ACCOUNTS = [
-  { role: 'Admin', email: 'admin@sentinelx.local' },
-  { role: 'Analyst', email: 'analyst@sentinelx.local' },
-  { role: 'Viewer', email: 'viewer@sentinelx.local' },
+  { role: 'admin', email: 'admin@sentinelx.local' },
+  { role: 'analyst', email: 'analyst@sentinelx.local' },
+  { role: 'viewer', email: 'viewer@sentinelx.local' },
 ];
 
 export default function Login({ onLogin }: Props) {
+  const { t, roleLabel } = useI18n();
   const [email, setEmail] = useState('admin@sentinelx.local');
   const [password, setPassword] = useState('password123');
   const [busy, setBusy] = useState(false);
@@ -48,60 +51,56 @@ export default function Login({ onLogin }: Props) {
                 <div className="brand-name">
                   Sentinel<span>X</span>
                 </div>
-                <div className="brand-sub">Operations desk</div>
+                <div className="brand-sub">{t('brand.sub')}</div>
               </div>
             </div>
-            <span className="login-index">SX / 001</span>
+            <div className="login-top-actions">
+              <LanguageSwitch compact />
+              <span className="login-index">{t('login.index')}</span>
+            </div>
           </div>
 
           <div className="login-hero">
             <div className="page-eyebrow">
-              <IconActivity size={12} /> Mini-SIEM / rule-based detection
+              <IconActivity size={12} /> {t('login.eyebrow')}
             </div>
             <h1 className="login-tagline">
-              See the signal.
+              {t('login.tagline1')}
               <br />
-              <em>Trace the evidence.</em>
+              <em>{t('login.tagline2')}</em>
             </h1>
-            <p className="login-copy">
-              Turn raw security logs into explainable alerts, evidence-backed investigations, and controlled response
-              actions.
-            </p>
+            <p className="login-copy">{t('login.copy')}</p>
           </div>
 
           <div className="login-points">
-            {[
-              'Rule-based detection with per-alert evidence',
-              'Tenant isolation and role-based access control',
-              'Auditable actions — every alert traces to source events',
-            ].map((t, index) => (
-              <div className="login-point" key={t}>
+            {[t('login.point1'), t('login.point2'), t('login.point3')].map((point, index) => (
+              <div className="login-point" key={point}>
                 <span className="point-index">{String(index + 1).padStart(2, '0')}</span>
-                <span>{t}</span>
+                <span>{point}</span>
               </div>
             ))}
           </div>
 
           <div className="login-meta">
-            <span>local build · v0.4.2</span>
-            <span>tenant-isolated</span>
+            <span>{t('login.localBuild')}</span>
+            <span>{t('login.tenantIsolated')}</span>
           </div>
         </section>
 
         <form className="login-form" onSubmit={submit}>
           <div className="login-form-head">
-            <div className="page-eyebrow">Console access</div>
-            <h2>Sign in</h2>
-            <p className="muted small">Use a seeded demo account to explore the workspace.</p>
+            <div className="page-eyebrow">{t('login.consoleAccess')}</div>
+            <h2>{t('login.title')}</h2>
+            <p className="muted small">{t('login.sub')}</p>
           </div>
 
           <label className="field">
-            <span>Email</span>
+            <span>{t('login.email')}</span>
             <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
           </label>
 
           <label className="field">
-            <span>Password</span>
+            <span>{t('login.password')}</span>
             <input
               className="input"
               type="password"
@@ -114,12 +113,12 @@ export default function Login({ onLogin }: Props) {
           {err && <div className="error-box">{err}</div>}
 
           <button className="btn primary login-submit" type="submit" disabled={busy}>
-            <span>{busy ? 'Signing in…' : 'Sign in'}</span>
+            <span>{busy ? t('login.submitting') : t('login.submit')}</span>
             <span aria-hidden="true">→</span>
           </button>
 
           <div className="login-demo">
-            <div className="login-sep">demo accounts</div>
+            <div className="login-sep">{t('login.demoAccounts')}</div>
             <div className="login-accounts">
               {DEMO_ACCOUNTS.map((a) => (
                 <button
@@ -132,7 +131,7 @@ export default function Login({ onLogin }: Props) {
                   }}
                 >
                   <span>
-                    <b>{a.role}</b>
+                    <b>{roleLabel(a.role)}</b>
                     <small>{a.email}</small>
                   </span>
                 </button>
@@ -141,7 +140,7 @@ export default function Login({ onLogin }: Props) {
           </div>
 
           <p className="login-hint">
-            Password for all demo accounts: <code>password123</code>. Dev seed only — never reuse in a shared deployment.
+            {t('login.hintLabel')} <code>password123</code>. {t('login.hintNote')}
           </p>
         </form>
       </div>

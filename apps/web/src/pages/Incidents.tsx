@@ -96,6 +96,9 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
   const [note, setNote] = useState('');
   const [noteBusy, setNoteBusy] = useState(false);
   const [detailKey, setDetailKey] = useState(0);
+  const [ai, setAi] = useState<any>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -204,6 +207,22 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
       setActionErr(e.message);
     } finally {
       setNoteBusy(false);
+    }
+  }
+
+  async function generateAISummary() {
+    if (!selected) return;
+    setAiBusy(true);
+    setAiErr('');
+    setAi(null);
+    try {
+      const r = await api.aiSummary(selected);
+      setAi(r);
+      setDetailKey((k) => k + 1);
+    } catch (e: any) {
+      setAiErr(e.message);
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -517,6 +536,82 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
                   {evidence.length === 0 && <p className="muted small">{t('alerts.noEvidence')}</p>}
                 </div>
               </details>
+
+              {canWrite && (
+                <div className="panel" style={{ marginTop: 16 }}>
+                  <div className="panel-head" style={{ padding: '4px 6px 10px', marginBottom: 10 }}>
+                    <div className="panel-title">{t('incidents.ai.title')}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                    <button
+                      className="btn primary sm"
+                      disabled={aiBusy}
+                      onClick={generateAISummary}
+                    >
+                      {aiBusy ? t('incidents.ai.generating') : t('incidents.ai.generate')}
+                    </button>
+                    <span className="chip">{t('incidents.ai.disclaimer')}</span>
+                  </div>
+                  {aiErr && <div className="error-box">{aiErr}</div>}
+                  {ai && (
+                    <>
+                      <div style={{ marginBottom: 10 }}>
+                        <div className="small muted" style={{ marginBottom: 4 }}>
+                          {t('incidents.ai.summary')}
+                        </div>
+                        <div className="panel" style={{ padding: 10 }}>{ai.summary}</div>
+                      </div>
+                      <div className="meta-grid" style={{ gap: 10 }}>
+                        <Meta label={t('incidents.ai.confidence')} value={`${ai.confidence}`} />
+                        <Meta label={t('incidents.ai.model')} value={ai.model ?? '-'} />
+                        <Meta label={t('incidents.ai.prompt')} value={ai.prompt_version ?? '-'} />
+                      </div>
+                      {(ai.next_steps ?? []).length > 0 && (
+                        <div style={{ marginTop: 10 }}>
+                          <div className="small muted" style={{ marginBottom: 4 }}>
+                            {t('incidents.ai.nextSteps')}
+                          </div>
+                          <ul className="small" style={{ margin: '0 0 0 16px', padding: 0 }}>
+                            {(ai.next_steps as any[]).map((s: string) => (
+                              <li key={s}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {(ai.alternative_hypotheses ?? []).length > 0 && (
+                        <div style={{ marginTop: 10 }}>
+                          <div className="small muted" style={{ marginBottom: 4 }}>
+                            {t('incidents.ai.altHypotheses')}
+                          </div>
+                          <ul className="small" style={{ margin: '0 0 0 16px', padding: 0 }}>
+                            {(ai.alternative_hypotheses as any[]).map((s: string) => (
+                              <li key={s}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {(ai.unknowns ?? []).length > 0 && (
+                        <div style={{ marginTop: 10 }}>
+                          <div className="small muted" style={{ marginBottom: 4 }}>
+                            {t('incidents.ai.unknowns')}
+                          </div>
+                          <ul className="small" style={{ margin: '0 0 0 16px', padding: 0 }}>
+                            {(ai.unknowns as any[]).map((s: string) => (
+                              <li key={s}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div style={{ marginTop: 10, fontStyle: 'italic', color: 'var(--muted)' }}>
+                        {t('incidents.ai.limitations')}: {ai.limitations}
+                      </div>
+                    </>
+                  )}
+                  {!ai && !aiErr && !aiBusy && (
+                    <p className="muted small">{t('incidents.ai.noIncident')}</p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </section>

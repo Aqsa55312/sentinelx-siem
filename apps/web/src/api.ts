@@ -61,6 +61,8 @@ export const api = {
     req(`/api/v1/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   addIncidentNote: (id: string, body: string) =>
     req(`/api/v1/incidents/${id}/notes`, { method: 'POST', body: JSON.stringify({ body }) }),
+  aiSummary: (id: string) =>
+    req(`/api/v1/incidents/${id}/ai-summary`, { method: 'POST' }),
   exportIncident: (id: string) => reqText(`/api/v1/incidents/${id}/export`),
   rules: () => req('/api/v1/rules'),
   sources: () => req('/api/v1/sources'),

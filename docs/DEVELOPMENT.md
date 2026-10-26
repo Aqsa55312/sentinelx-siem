@@ -29,11 +29,11 @@ Operational companion to the README. Tracks what is actually implemented and how
 | Incident workflow | Done | `new → triaged → investigating → contained → resolved → closed` plus `false_positive`; invalid jumps rejected; `closed`/`false_positive` require reason |
 | Incident collaboration | Done | Assignment, investigation notes, activity timeline, Markdown export, linked-alert status sync |
 | React dashboard | Done | Overview (+incident queue), Event Explorer, Alerts triage, Incidents, Rules, Sources; EN/ID UI switch with locale-aware dates; animated login |
-| Audit log | Partial | Auth, ingest, detection, source creation, alert/incident changes recorded internally; no read UI/API yet |
+| AI investigation | Done | `apps/ai` FastAPI service (mock + optional OpenAI provider), sanitized context, input size limit, redaction, JSON schema + citation validation, timeout/provider-error handling; Go API `POST /api/v1/incidents/{id}/ai-summary`; AI panel in incident detail |
+| Audit log | Partial | Auth, ingest, detection, source creation, alert/incident changes, AI summary requests recorded internally; no read UI/API yet |
 
 ## Not implemented yet
 
-- Python AI service (evidence-grounded summary, prompt-injection resistant) — Week 6
 - Response simulation + approval — Week 7
 - OpenSearch indexing, message broker, Redis
 - Metrics endpoint/tracing, TLS, secret manager, retention jobs
@@ -57,7 +57,13 @@ cd sentinelx\apps\web
 npm install
 npm run dev
 
-# 3. Login
+# 3. AI service (:8000, optional; provider mock butuh tidak butuh kunci API)
+cd sentinelx\apps\ai
+pip install -r requirements.txt
+$env:AI_PROVIDER="mock"
+python -m uvicorn main:app --port 8000
+
+# 4. Login
 #    admin@sentinelx.local / password123     (admin)
 #    analyst@sentinelx.local / password123   (analyst)
 #    responder@sentinelx.local / password123 (responder — read-only until Week 7)

@@ -425,6 +425,22 @@ paths:
             text/markdown:
               schema: { type: string }
         '404': { $ref: '#/components/responses/NotFound' }
+  /incidents/{id}/ai-summary:
+    post:
+      summary: Request AI-assisted investigation summary for an incident (admin/analyst)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IncidentID'
+      responses:
+        '200':
+          description: Structured AI investigation summary with citations
+          content:
+            application/json:
+              schema: { type: object }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
   /rules:
     get:
       summary: Detection rule registry with configuration and test cases
@@ -485,6 +501,16 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     Conflict:
       description: Alert already linked to another incident
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadGateway:
+      description: Upstream AI service error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    GatewayTimeout:
+      description: Upstream AI service timeout
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

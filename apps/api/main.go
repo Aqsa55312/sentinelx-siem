@@ -50,6 +50,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/incidents/{id}", withAuth(st, handleGetIncident))
 	mux.HandleFunc("PATCH /api/v1/incidents/{id}", withAuth(st, handleUpdateIncident, true))
 	mux.HandleFunc("POST /api/v1/incidents/{id}/notes", withAuth(st, handleAddIncidentNote, true))
+	mux.HandleFunc("POST /api/v1/incidents/{id}/ai-summary", withAuth(st, handleAISummary, true))
 	mux.HandleFunc("GET /api/v1/incidents/{id}/export", withAuth(st, handleExportIncident))
 	mux.HandleFunc("GET /api/v1/rules", withAuth(st, handleListRules))
 

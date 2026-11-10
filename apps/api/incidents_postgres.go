@@ -551,3 +551,190 @@ func uniqueStrings(in []string) []string {
 	}
 	return out
 }
+
+// ---------- Week 7: response simulation + approval flow (Postgres) ----------
+
+func (p *PostgresStore) CreateResponseAction(orgID, actor, incidentID, actionType, target, reason string) (ResponseAction, error) {
+	if !validResponseActionType(actionType) {
+		return ResponseAction{}, fmt.Errorf("unsupported action type")
+	}
+	target = strings.TrimSpace(target)
+	reason = strings.TrimSpace(reason)
+	if target == "" || reason == "" {
+		return ResponseAction{}, fmt.Errorf("target and reason are required")
+	}
+	var status string
+	if err := p.db.QueryRow(`SELECT status FROM incidents WHERE id=$1 AND organization_id=$2`,
+		incidentID, orgID).Scan(&status); err != nil {
+		return ResponseAction{}, fmt.Errorf("incident not found")
+	}
+	if status == incidentStatusClosed || status == incidentStatusFalsePositive {
+		return ResponseAction{}, fmt.Errorf("cannot respond to a %s incident", status)
+	}
+	id := newID("ra")
+	now := time.Now().UTC()
+	if _, err := p.db.Exec(`INSERT INTO response_actions (id, organization_id, incident_id, action_type, target,
+		reason, status, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		id, orgID, incidentID, actionType, target, reason, responseActionStatusPending, actor, now); err != nil {
+		return ResponseAction{}, err
+	}
+	_, _ = p.db.Exec(`INSERT INTO incident_timeline (id, incident_id, organization_id, kind, actor_id, message)
+		VALUES ($1,$2,$3,$4,$5,$6)`, newID("itl"), incidentID, orgID, "response_action_created", actor,
+		fmt.Sprintf("Response action %s on %s requested", actionType, target))
+	p.Audit(orgID, actor, "response_action.created", incidentID, "ok", "")
+	return p.mustResponseAction(orgID, id), nil
+}
+
+func (p *PostgresStore) ListResponseActions(orgID, incidentID string) []ResponseAction {
+	rows, err := p.db.Query(`SELECT id, organization_id, incident_id, action_type, target, reason, status,
+		created_by, approver_id, approved_at, executed_by, executed_at, result, created_at
+		FROM response_actions WHERE organization_id=$1 AND incident_id=$2 ORDER BY created_at DESC`, orgID, incidentID)
+	if err != nil {
+		return []ResponseAction{}
+	}
+	defer rows.Close()
+	out := []ResponseAction{}
+	for rows.Next() {
+		var ra ResponseAction
+		var apID sql.NullString
+		var apAt, exAt sql.NullTime
+		if err := rows.Scan(&ra.ID, &ra.OrgID, &ra.IncidentID, &ra.ActionType, &ra.Target, &ra.Reason, &ra.Status,
+			&ra.CreatedBy, &apID, &apAt, &ra.ExecutedBy, &exAt, &ra.Result, &ra.CreatedAt); err != nil {
+			continue
+		}
+		ra.ApproverID = apID.String
+		if apAt.Valid {
+			ra.ApprovedAt = &apAt.Time
+		}
+		if exAt.Valid {
+			ra.ExecutedAt = &exAt.Time
+		}
+		out = append(out, ra)
+	}
+	return out
+}
+
+func (p *PostgresStore) GetResponseAction(orgID, id string) (ResponseAction, bool) {
+	row := p.db.QueryRow(`SELECT id, organization_id, incident_id, action_type, target, reason, status,
+		created_by, approver_id, approved_at, executed_by, executed_at, result, created_at
+		FROM response_actions WHERE id=$1 AND organization_id=$2`, id, orgID)
+	var ra ResponseAction
+	var apID sql.NullString
+	var apAt, exAt sql.NullTime
+	if err := row.Scan(&ra.ID, &ra.OrgID, &ra.IncidentID, &ra.ActionType, &ra.Target, &ra.Reason, &ra.Status,
+		&ra.CreatedBy, &apID, &apAt, &ra.ExecutedBy, &exAt, &ra.Result, &ra.CreatedAt); err != nil {
+		return ResponseAction{}, false
+	}
+	ra.ApproverID = apID.String
+	if apAt.Valid {
+		ra.ApprovedAt = &apAt.Time
+	}
+	if exAt.Valid {
+		ra.ExecutedAt = &exAt.Time
+	}
+	return ra, true
+}
+
+func (p *PostgresStore) ApproveResponseAction(orgID, id, actor string) (ResponseAction, error) {
+	tx, err := p.db.Begin()
+	if err != nil {
+		return ResponseAction{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var incidentID, actionType, target string
+	if err := tx.QueryRow(`SELECT incident_id, action_type, target FROM response_actions WHERE id=$1 AND organization_id=$2 FOR UPDATE`,
+		id, orgID).Scan(&incidentID, &actionType, &target); err != nil {
+		return ResponseAction{}, fmt.Errorf("response action not found")
+	}
+	var status string
+	if err := tx.QueryRow(`SELECT status FROM response_actions WHERE id=$1`, id).Scan(&status); err != nil || status != responseActionStatusPending {
+		return ResponseAction{}, fmt.Errorf("response action is not pending")
+	}
+	now := time.Now().UTC()
+	apprAt := now
+	execAt := now
+	result := simulateResponse(actionType, target)
+	res, err := tx.Exec(`UPDATE response_actions SET status=$1, approver_id=$2, approved_at=$3,
+		executed_by=$4, executed_at=$5, result=$6
+		WHERE id=$7 AND organization_id=$8 AND status=$9`,
+		responseActionStatusExecuted, actor, apprAt, actor, execAt, result, id, orgID, responseActionStatusPending)
+	if err != nil {
+		return ResponseAction{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ResponseAction{}, fmt.Errorf("response action not found or not pending")
+	}
+	_, _ = tx.Exec(`INSERT INTO incident_timeline (id, incident_id, organization_id, kind, actor_id, message)
+		VALUES ($1,$2,$3,$4,$5,$6)`, newID("itl"), incidentID, orgID, "response_action_executed", actor,
+		fmt.Sprintf("Response action %s on %s executed (simulated): %s", actionType, target, result))
+	if err := tx.Commit(); err != nil {
+		return ResponseAction{}, err
+	}
+	p.Audit(orgID, actor, "response_action.executed", incidentID, "ok", "")
+	return p.mustResponseAction(orgID, id), nil
+}
+
+func (p *PostgresStore) RejectResponseAction(orgID, id, actor, reason string) (ResponseAction, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return ResponseAction{}, fmt.Errorf("rejection reason is required")
+	}
+	tx, err := p.db.Begin()
+	if err != nil {
+		return ResponseAction{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var incidentID, actionType, target string
+	if err := tx.QueryRow(`SELECT incident_id, action_type, target FROM response_actions WHERE id=$1 AND organization_id=$2 FOR UPDATE`,
+		id, orgID).Scan(&incidentID, &actionType, &target); err != nil {
+		return ResponseAction{}, fmt.Errorf("response action not found")
+	}
+	var status string
+	if err := tx.QueryRow(`SELECT status FROM response_actions WHERE id=$1`, id).Scan(&status); err != nil || status != responseActionStatusPending {
+		return ResponseAction{}, fmt.Errorf("response action is not pending")
+	}
+	if _, err := tx.Exec(`UPDATE response_actions SET status=$1 WHERE id=$2 AND organization_id=$3 AND status=$4`,
+		responseActionStatusRejected, id, orgID, responseActionStatusPending); err != nil {
+		return ResponseAction{}, err
+	}
+	_, _ = tx.Exec(`INSERT INTO incident_timeline (id, incident_id, organization_id, kind, actor_id, message)
+		VALUES ($1,$2,$3,$4,$5,$6)`, newID("itl"), incidentID, orgID, "response_action_rejected", actor,
+		fmt.Sprintf("Response action %s on %s rejected: %s", actionType, target, reason))
+	if err := tx.Commit(); err != nil {
+		return ResponseAction{}, err
+	}
+	p.Audit(orgID, actor, "response_action.rejected", incidentID, "ok", "")
+	return p.mustResponseAction(orgID, id), nil
+}
+
+func (p *PostgresStore) mustResponseAction(orgID, id string) ResponseAction {
+	ra, _ := p.GetResponseAction(orgID, id)
+	return ra
+}
+
+func (p *PostgresStore) ListAuditLogs(orgID string) []AuditEntry {
+	rows, err := p.db.Query(`SELECT id, organization_id, actor_id, action, target_id, result, correlation_id, created_at
+		FROM audit_logs WHERE organization_id=$1 ORDER BY created_at DESC`, orgID)
+	if err != nil {
+		return []AuditEntry{}
+	}
+	defer rows.Close()
+	out := []AuditEntry{}
+	for rows.Next() {
+		var e AuditEntry
+		var org, actor, action, target, result, corr sql.NullString
+		var ts time.Time
+		if err := rows.Scan(&e.ID, &org, &actor, &action, &target, &result, &corr, &ts); err != nil {
+			continue
+		}
+		e.OrgID = org.String
+		e.ActorID = actor.String
+		e.Action = action.String
+		e.TargetID = target.String
+		e.Result = result.String
+		e.CorrelationID = corr.String
+		e.CreatedAt = ts
+		out = append(out, e)
+	}
+	return out
+}

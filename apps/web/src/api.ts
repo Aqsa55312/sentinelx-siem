@@ -61,6 +61,22 @@ export const api = {
     req(`/api/v1/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   addIncidentNote: (id: string, body: string) =>
     req(`/api/v1/incidents/${id}/notes`, { method: 'POST', body: JSON.stringify({ body }) }),
+  responseActions: (id: string) =>
+    req(`/api/v1/incidents/${id}/response-actions`),
+  createResponseAction: (id: string, body: Record<string, unknown>) =>
+    req(`/api/v1/incidents/${id}/response-actions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  approveResponseAction: (id: string) =>
+    req(`/api/v1/response-actions/${id}/approve`, { method: 'POST' }),
+  rejectResponseAction: (id: string, reason: string) =>
+    req(`/api/v1/response-actions/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  auditLogs: (limit = 100) =>
+    req(`/api/v1/audit-logs?limit=${limit}`),
   aiSummary: (id: string) =>
     req(`/api/v1/incidents/${id}/ai-summary`, { method: 'POST' }),
   exportIncident: (id: string) => reqText(`/api/v1/incidents/${id}/export`),

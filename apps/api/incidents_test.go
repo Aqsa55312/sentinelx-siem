@@ -280,3 +280,148 @@ func TestAssetCriticality_AffectsDetectionRisk(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestResponseAction_Create_List_TenantIsolation(t *testing.T) {
+	st := NewMemoryStore()
+	a := seedAlert(t, st, "192.0.2.77", "demo-user")
+	res := correlateAlerts(st, "org-demo-01", "detection-engine", []Alert{a})
+	incidentID := res.IncidentIDs[0]
+
+	// Responder (write access in Week 7) can create a pending response action.
+	ra, err := st.CreateResponseAction("org-demo-01", "user-responder-01", incidentID,
+		"disable_user", "demo-user", "suspected compromised account")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if ra.Status != responseActionStatusPending || ra.ActionType != "disable_user" || ra.Target != "demo-user" {
+		t.Fatalf("unexpected created action: %+v", ra)
+	}
+
+	list := st.ListResponseActions("org-demo-01", incidentID)
+	if len(list) != 1 || list[0].ID != ra.ID {
+		t.Fatalf("list=%v, want 1 action", list)
+	}
+
+	// Cross-tenant read must fail.
+	if _, ok := st.GetResponseAction("org-other", ra.ID); ok {
+		t.Fatal("cross-tenant response action read must fail")
+	}
+}
+
+func TestResponseAction_Approve_ExecutesSimulated(t *testing.T) {
+	st := NewMemoryStore()
+	a := seedAlert(t, st, "198.51.100.3", "demo-user")
+	res := correlateAlerts(st, "org-demo-01", "detection-engine", []Alert{a})
+	incidentID := res.IncidentIDs[0]
+
+	ra, err := st.CreateResponseAction("org-demo-01", "user-analyst-01", incidentID,
+		"isolate_host", "host-01", "contain potential lateral movement")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ra.Status != responseActionStatusPending {
+		t.Fatalf("want pending, got %s", ra.Status)
+	}
+
+	// Responder approves -> simulator executes (no production change).
+	exec, err := st.ApproveResponseAction("org-demo-01", ra.ID, "user-responder-01")
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if exec.Status != responseActionStatusExecuted {
+		t.Fatalf("want executed, got %s", exec.Status)
+	}
+	if exec.ApproverID != "user-responder-01" || exec.ExecutedBy != "user-responder-01" {
+		t.Fatalf("approver/executor not recorded: %+v", exec)
+	}
+	if exec.Result == "" || !strings.Contains(exec.Result, "simulated") {
+		t.Fatalf("simulated result missing: %s", exec.Result)
+	}
+
+	// Already executed: cannot approve again.
+	if _, err := st.ApproveResponseAction("org-demo-01", ra.ID, "user-responder-01"); err == nil {
+		t.Fatal("approving an executed action must fail")
+	}
+
+	detail, _ := st.GetIncident("org-demo-01", incidentID)
+	found := false
+	for _, t := range detail.Timeline {
+		if strings.Contains(t.Message, "executed (simulated)") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("execution not recorded in timeline")
+	}
+}
+
+func TestResponseAction_Reject(t *testing.T) {
+	st := NewMemoryStore()
+	a := seedAlert(t, st, "203.0.113.12", "demo-user")
+	res := correlateAlerts(st, "org-demo-01", "detection-engine", []Alert{a})
+	incidentID := res.IncidentIDs[0]
+
+	ra, err := st.CreateResponseAction("org-demo-01", "user-analyst-01", incidentID,
+		"block_ip", "198.51.100.9", "block scanning source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rej, err := st.RejectResponseAction("org-demo-01", ra.ID, "user-responder-01", "false alarm")
+	if err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+	if rej.Status != responseActionStatusRejected {
+		t.Fatalf("want rejected, got %s", rej.Status)
+	}
+	if _, err := st.RejectResponseAction("org-demo-01", ra.ID, "user-responder-01", "again"); err == nil {
+		t.Fatal("rejecting a rejected action must fail")
+	}
+	if _, err := st.ApproveResponseAction("org-demo-01", ra.ID, "user-responder-01"); err == nil {
+		t.Fatal("approving a rejected action must fail")
+	}
+	_ = incidentID
+}
+
+func TestResponseAction_CannotRespondClosedIncident(t *testing.T) {
+	st := NewMemoryStore()
+	a := seedAlert(t, st, "192.0.2.88", "demo-user")
+	res := correlateAlerts(st, "org-demo-01", "detection-engine", []Alert{a})
+	incidentID := res.IncidentIDs[0]
+
+	if _, err := st.UpdateIncident("org-demo-01", incidentID, "user-admin-01", IncidentPatch{
+		Status: incidentStatusClosed, ClosedReason: "resolved",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateResponseAction("org-demo-01", "user-responder-01", incidentID,
+		"notify", "soc@example.com", "inform"); err == nil {
+		t.Fatal("creating response action on closed incident must fail")
+	}
+}
+
+func TestAuditLogs_Recorded(t *testing.T) {
+	st := NewMemoryStore()
+	a := seedAlert(t, st, "192.0.2.33", "demo-user")
+	res := correlateAlerts(st, "org-demo-01", "detection-engine", []Alert{a})
+	incidentID := res.IncidentIDs[0]
+
+	_, _ = st.CreateResponseAction("org-demo-01", "user-responder-01", incidentID,
+		"disable_user", "demo-user", "test")
+	logs := st.ListAuditLogs("org-demo-01")
+	if len(logs) == 0 {
+		t.Fatal("audit log should not be empty")
+	}
+	found := false
+	for _, e := range logs {
+		if e.Action == "response_action.created" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("response_action.created audit entry missing; logs=%+v", logs)
+	}
+	// Cross-tenant isolation.
+	if got := st.ListAuditLogs("org-other"); len(got) != 0 {
+		t.Fatalf("cross-tenant audit logs=%v, want 0", got)
+	}
+}

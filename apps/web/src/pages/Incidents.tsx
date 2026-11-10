@@ -16,6 +16,8 @@ type Props = {
   refreshKey: number;
   focusId?: string | null;
   canWrite: boolean;
+  canRespond: boolean;
+  canApprove: boolean;
   onOpenAlert: (id: string) => void;
   onViewEvents: (srcIp: string) => void;
 };
@@ -73,6 +75,24 @@ const TIMELINE_LABEL: Record<string, TranslationKey> = {
   note_added: 'incidents.timeline.noteAdded',
   title_changed: 'incidents.timeline.titleChanged',
   severity_changed: 'incidents.timeline.severityChanged',
+  response_action_created: 'incidents.response.created',
+  response_action_executed: 'incidents.response.executed',
+  response_action_rejected: 'incidents.response.rejected',
+};
+
+const RESPONSE_STATUS_LABEL: Record<string, TranslationKey> = {
+  pending: 'incidents.response.status.pending',
+  approved: 'incidents.response.status.approved',
+  executed: 'incidents.response.status.executed',
+  rejected: 'incidents.response.status.rejected',
+  failed: 'incidents.response.status.failed',
+};
+
+const RESPONSE_ACTION_LABEL: Record<string, TranslationKey> = {
+  disable_user: 'incidents.response.action.disable_user',
+  isolate_host: 'incidents.response.action.isolate_host',
+  block_ip: 'incidents.response.action.block_ip',
+  notify: 'incidents.response.action.notify',
 };
 
 function timelineDot(kind: string) {
@@ -99,6 +119,14 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
   const [ai, setAi] = useState<any>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState('');
+  const [actions, setActions] = useState<any[]>([]);
+  const [actType, setActType] = useState('disable_user');
+  const [actTarget, setActTarget] = useState('');
+  const [actReason, setActReason] = useState('');
+  const [actBusy, setActBusy] = useState(false);
+  const [actErr, setActErr] = useState('');
+  const [logs, setLogs] = useState<any[]>([]);
+  const [logsBusy, setLogsBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -135,6 +163,7 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
         if (!alive) return;
         setDetail(r);
         setErr('');
+        loadResponseActions();
       })
       .catch((e: any) => alive && setErr(e.message))
       .finally(() => alive && setLoading(false));
@@ -142,6 +171,15 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
       alive = false;
     };
   }, [selected, detailKey, refreshKey]);
+
+  useEffect(() => {
+    let alive = true;
+    loadAuditLogs();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const userMap = useMemo(() => {
     const m = new Map<string, any>();
@@ -223,6 +261,80 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
       setAiErr(e.message);
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  async function loadResponseActions() {
+    if (!selected) return;
+    try {
+      const r = await api.responseActions(selected);
+      setActions(r.response_actions ?? []);
+    } catch {
+      setActions([]);
+    }
+  }
+
+  async function createResponseAction() {
+    if (!selected) return;
+    setActBusy(true);
+    setActErr('');
+    try {
+      await api.createResponseAction(selected, {
+        action_type: actType,
+        target: actTarget.trim(),
+        reason: actReason.trim(),
+      });
+      setActType('disable_user');
+      setActTarget('');
+      setActReason('');
+      await loadResponseActions();
+      setDetailKey((k) => k + 1);
+    } catch (e: any) {
+      setActErr(e.message);
+    } finally {
+      setActBusy(false);
+    }
+  }
+
+  async function approveResponseAction(id: string) {
+    setActBusy(true);
+    setActErr('');
+    try {
+      await api.approveResponseAction(id);
+      await loadResponseActions();
+      setDetailKey((k) => k + 1);
+    } catch (e: any) {
+      setActErr(e.message);
+    } finally {
+      setActBusy(false);
+    }
+  }
+
+  async function rejectResponseAction(id: string) {
+    const reason = window.prompt(t('incidents.response.rejectPrompt'));
+    if (reason === null || !reason.trim()) return;
+    setActBusy(true);
+    setActErr('');
+    try {
+      await api.rejectResponseAction(id, reason.trim());
+      await loadResponseActions();
+      setDetailKey((k) => k + 1);
+    } catch (e: any) {
+      setActErr(e.message);
+    } finally {
+      setActBusy(false);
+    }
+  }
+
+  async function loadAuditLogs() {
+    setLogsBusy(true);
+    try {
+      const r = await api.auditLogs(100);
+      setLogs(r.audit_logs ?? []);
+    } catch {
+      setLogs([]);
+    } finally {
+      setLogsBusy(false);
     }
   }
 
@@ -609,6 +721,162 @@ export default function Incidents({ refreshKey, focusId, canWrite, onOpenAlert, 
                   )}
                   {!ai && !aiErr && !aiBusy && (
                     <p className="muted small">{t('incidents.ai.noIncident')}</p>
+                  )}
+                </div>
+              )}
+
+              {canRespond && (
+                <div className="panel" style={{ marginTop: 16 }}>
+                  <div className="panel-head" style={{ padding: '4px 6px 10px', marginBottom: 10 }}>
+                    <div className="panel-title">{t('incidents.response.title')}</div>
+                    <div className="panel-sub">{t('incidents.response.sub')}</div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div className="small muted">{t('incidents.response.disclaimer')}</div>
+                  </div>
+                  <form
+                    className="note-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      createResponseAction();
+                    }}
+                  >
+                    <div className="meta-grid" style={{ gap: 8, marginBottom: 8 }}>
+                      <select
+                        className="select"
+                        value={actType}
+                        onChange={(e) => setActType(e.target.value)}
+                      >
+                        <option value="disable_user">
+                          {t('incidents.response.action.disable_user')}
+                        </option>
+                        <option value="isolate_host">
+                          {t('incidents.response.action.isolate_host')}
+                        </option>
+                        <option value="block_ip">
+                          {t('incidents.response.action.block_ip')}
+                        </option>
+                        <option value="notify">{t('incidents.response.action.notify')}</option>
+                      </select>
+                      <input
+                        className="input"
+                        placeholder={t('incidents.response.target')}
+                        value={actTarget}
+                        onChange={(e) => setActTarget(e.target.value)}
+                      />
+                      <input
+                        className="input"
+                        placeholder={t('incidents.response.reason')}
+                        value={actReason}
+                        onChange={(e) => setActReason(e.target.value)}
+                      />
+                      <button className="btn primary sm" disabled={actBusy}>
+                        {actBusy ? t('incidents.response.submitting') : t('incidents.response.submit')}
+                      </button>
+                    </div>
+                  </form>
+                  {actErr && <div className="error-box">{actErr}</div>}
+                  <div className="section-label" style={{ marginTop: 10 }}>
+                    {t('incidents.response.title')} ({actions.length})
+                  </div>
+                  <div className="linked-alerts">
+                    {actions.length === 0 && (
+                      <p className="muted small">{t('incidents.response.noActions')}</p>
+                    )}
+                    {actions.map((a: any) => (
+                      <div className="linked-alert" key={a.response_action_id}>
+                        <span className={`status-tag ${a.status}`}>
+                          {t(
+                            (RESPONSE_STATUS_LABEL[a.status] ??
+                              'incidents.response.status.pending') as TranslationKey,
+                          )}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <span className="alert-item-title">
+                            {t(
+                              (RESPONSE_ACTION_LABEL[a.action_type] ??
+                                'incidents.response.action.disable_user') as TranslationKey,
+                            )}
+                          </span>
+                          <span className="alert-item-meta">
+                            <span>
+                              {t('incidents.response.target')}: {a.target}
+                            </span>
+                            <span>·</span>
+                            <span>
+                              {t('incidents.response.created')}:{' '}
+                              {fmtDateTime(a.created_at)}
+                            </span>
+                          </span>
+                          <span className="incident-assignee">
+                            {t('incidents.response.createdBy')}:{' '}
+                            {a.created_by || '-'}
+                          </span>
+                        </span>
+                        <div className="small muted">{a.reason}</div>
+                        {a.status === 'pending' && canApprove && (
+                          <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                            <button
+                              className="btn sm"
+                              onClick={() => approveResponseAction(a.response_action_id)}
+                            >
+                              {t('incidents.response.approve')}
+                            </button>
+                            <button
+                              className="btn sm ghost"
+                              onClick={() => rejectResponseAction(a.response_action_id)}
+                            >
+                              {t('incidents.response.reject')}
+                            </button>
+                          </div>
+                        )}
+                        {a.status !== 'pending' && (
+                          <div className="small muted">
+                            {t('incidents.response.approvedBy')}:{' '}
+                            {a.approver_id || '-'} ·{' '}
+                            {t('incidents.response.executedBy')}:{' '}
+                            {a.executed_by || '-'} ·{' '}
+                            {t('incidents.response.result')}: {a.result || '-'}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {canWrite && (
+                <div className="panel" style={{ marginTop: 16 }}>
+                  <div className="panel-head" style={{ padding: '4px 6px 10px', marginBottom: 10 }}>
+                    <div className="panel-title">{t('incidents.audit.title')}</div>
+                    <div className="panel-sub">{t('incidents.audit.sub')}</div>
+                  </div>
+                  {logsBusy ? (
+                    <div className="skeleton" style={{ height: 14, width: '40%', marginBottom: 8 }} />
+                  ) : logs.length === 0 ? (
+                    <p className="muted small">{t('incidents.audit.noLogs')}</p>
+                  ) : (
+                    <div className="linked-alerts">
+                      {logs.map((e: any) => (
+                        <div className="linked-alert" key={e.audit_id}>
+                          <span className="small muted">{fmtDateTime(e.created_at)}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <span className="alert-item-title">{e.action}</span>
+                            <span className="alert-item-meta">
+                              <span>{t('incidents.audit.actor')}: {e.actor_id || '-'}</span>
+                              <span>·</span>
+                              <span>{t('incidents.audit.result')}: {e.result}</span>
+                              {e.target_id && (
+                                <>
+                                  <span>·</span>
+                                  <span>{e.target_id}</span>
+                                </>
+                              )}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

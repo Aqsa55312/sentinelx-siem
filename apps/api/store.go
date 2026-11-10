@@ -221,8 +221,14 @@ type Store interface {
 	AttachAlertsToIncident(orgID, id, actor string, alertIDs []string) (Incident, error)
 	UpdateIncident(orgID, id, actor string, patch IncidentPatch) (Incident, error)
 	AddIncidentNote(orgID, id, actor, body string) (IncidentNote, error)
+	CreateResponseAction(orgID, actor, incidentID, actionType, target, reason string) (ResponseAction, error)
+	ListResponseActions(orgID, incidentID string) []ResponseAction
+	GetResponseAction(orgID, id string) (ResponseAction, bool)
+	ApproveResponseAction(orgID, id, actor string) (ResponseAction, error)
+	RejectResponseAction(orgID, id, actor, reason string) (ResponseAction, error)
 	Audit(orgID, actor, action, target, result, corrID string)
 	AuditCount() int
+	ListAuditLogs(orgID string) []AuditEntry
 }
 
 // ---------- MemoryStore ----------
@@ -244,6 +250,9 @@ type MemoryStore struct {
 	alertIncident    map[string]string   // alert ID -> incident ID
 	incidentNotes    []IncidentNote
 	incidentTimeline []IncidentTimelineEntry
+
+	responseActions []ResponseAction
+	auditLog        []AuditEntry
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -558,6 +567,16 @@ func (s *MemoryStore) Audit(orgID, actor, action, target, result, corrID string)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.audits++
+	s.auditLog = append(s.auditLog, AuditEntry{
+		ID:            newID("aud"),
+		OrgID:         orgID,
+		ActorID:       actor,
+		Action:        action,
+		TargetID:      target,
+		Result:        result,
+		CorrelationID: corrID,
+		CreatedAt:     time.Now().UTC(),
+	})
 }
 
 func (s *MemoryStore) AuditCount() int {

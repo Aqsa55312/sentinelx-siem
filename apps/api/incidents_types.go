@@ -144,6 +144,86 @@ type UserSummary struct {
 	Role  string `json:"role"`
 }
 
+// Week 7: response simulation + approval flow.
+//
+// Action types are simulated only — no production command (firewall block,
+// account disable, etc.) is ever sent from a response action. The simulator
+// records a deterministic result and the actor/approver/result/time for audit.
+const (
+	responseActionStatusPending   = "pending"
+	responseActionStatusApproved  = "approved"
+	responseActionStatusRejected  = "rejected"
+	responseActionStatusExecuted  = "executed"
+	responseActionStatusFailed    = "failed"
+)
+
+var responseActionStatuses = map[string]bool{
+	responseActionStatusPending: true, responseActionStatusApproved: true,
+	responseActionStatusRejected: true, responseActionStatusExecuted: true,
+	responseActionStatusFailed: true,
+}
+
+var responseActionTypes = map[string]bool{
+	"disable_user": true, "isolate_host": true, "block_ip": true, "notify": true,
+}
+
+func validResponseActionStatus(s string) bool { return responseActionStatuses[s] }
+func validResponseActionType(t string) bool   { return responseActionTypes[t] }
+
+// responseActionTransitions: pending -> approved/rejected; approved -> executed.
+// rejected/failed are terminal.
+var responseActionTransitions = map[string]map[string]bool{
+	responseActionStatusPending:   {responseActionStatusApproved: true, responseActionStatusRejected: true},
+	responseActionStatusApproved:  {responseActionStatusExecuted: true},
+	responseActionStatusRejected:  {},
+	responseActionStatusExecuted:  {},
+	responseActionStatusFailed:    {},
+}
+
+type ResponseAction struct {
+	ID          string     `json:"response_action_id"`
+	OrgID       string     `json:"-"`
+	IncidentID  string     `json:"incident_id"`
+	ActionType  string     `json:"action_type"`
+	Target      string     `json:"target"`
+	Reason      string     `json:"reason"`
+	Status      string     `json:"status"`
+	CreatedBy   string     `json:"created_by"`
+	ApproverID  string     `json:"approver_id,omitempty"`
+	ApprovedAt  *time.Time `json:"approved_at,omitempty"`
+	ExecutedBy  string     `json:"executed_by,omitempty"`
+	ExecutedAt  *time.Time `json:"executed_at,omitempty"`
+	Result      string     `json:"result,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// Simulated result text per action type (never a real production change).
+func simulateResponse(actionType, target string) string {
+	switch actionType {
+	case "disable_user":
+		return fmt.Sprintf("simulated: account %s disabled (no production change)", target)
+	case "isolate_host":
+		return fmt.Sprintf("simulated: host %s isolated from network (no production change)", target)
+	case "block_ip":
+		return fmt.Sprintf("simulated: IP %s blocked at perimeter (no production change)", target)
+	case "notify":
+		return fmt.Sprintf("simulated: notification sent to %s", target)
+	default:
+		return fmt.Sprintf("simulated: action %s on %s recorded", actionType, target)
+	}
+}
+
+type AuditEntry struct {
+	ID        string    `json:"audit_id"`
+	OrgID     string    `json:"-"`
+	ActorID   string    `json:"actor_id"`
+	Action    string    `json:"action"`
+	TargetID  string    `json:"target_id,omitempty"`
+	Result    string    `json:"result"`
+	CorrelationID string `json:"correlation_id,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type CorrelationResult struct {
 	Created     int      `json:"incidents_created"`
 	Updated     int      `json:"incidents_updated"`

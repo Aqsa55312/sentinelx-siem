@@ -54,6 +54,13 @@ func main() {
 	mux.HandleFunc("GET /api/v1/incidents/{id}/export", withAuth(st, handleExportIncident))
 	mux.HandleFunc("GET /api/v1/rules", withAuth(st, handleListRules))
 
+	// Week 7: response simulation + approval flow.
+	mux.HandleFunc("POST /api/v1/incidents/{id}/response-actions", withRespond(st, handleCreateResponseAction))
+	mux.HandleFunc("GET /api/v1/incidents/{id}/response-actions", withAuth(st, handleListResponseActions))
+	mux.HandleFunc("POST /api/v1/response-actions/{id}/approve", withApprove(st, handleApproveResponseAction))
+	mux.HandleFunc("POST /api/v1/response-actions/{id}/reject", withApprove(st, handleRejectResponseAction))
+	mux.HandleFunc("GET /api/v1/audit-logs", withAuth(st, handleListAuditLogs))
+
 	addr := os.Getenv("PORT")
 	if addr == "" {
 		addr = "8080"
@@ -101,6 +108,30 @@ func withAuth(st Store, h func(Store, Claims, http.ResponseWriter, *http.Request
 		r = r.WithContext(context.WithValue(r.Context(), claimsKey, cl))
 		h(st, cl, w, r)
 	}
+}
+
+// withRespond gates response-action creation (admin/analyst/responder).
+func withRespond(st Store, h func(Store, Claims, http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return withAuth(st, func(s Store, c Claims, w http.ResponseWriter, r *http.Request) {
+		if !canRespond(c.Role) {
+			s.Audit(c.OrgID, c.UserID, "authz.denied", r.URL.Path, "denied", corrID(r))
+			writeErr(w, 403, "role "+c.Role+" cannot respond")
+			return
+		}
+		h(s, c, w, r)
+	})
+}
+
+// withApprove gates approval/rejection of response actions (admin/responder).
+func withApprove(st Store, h func(Store, Claims, http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return withAuth(st, func(s Store, c Claims, w http.ResponseWriter, r *http.Request) {
+		if !canApprove(c.Role) {
+			s.Audit(c.OrgID, c.UserID, "authz.denied", r.URL.Path, "denied", corrID(r))
+			writeErr(w, 403, "role "+c.Role+" cannot approve")
+			return
+		}
+		h(s, c, w, r)
+	})
 }
 
 func corrID(r *http.Request) string {

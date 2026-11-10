@@ -163,6 +163,8 @@ export default function App() {
   }
 
   const canWrite = session.role === 'admin' || session.role === 'analyst';
+  const canRespond = canWrite || session.role === 'responder';
+  const canApprove = session.role === 'admin' || session.role === 'responder';
 
   return (
     <div className="app">
@@ -285,6 +287,8 @@ export default function App() {
               refreshKey={refreshKey}
               focusId={incidentFocus}
               canWrite={canWrite}
+              canRespond={canRespond}
+              canApprove={canApprove}
               onOpenAlert={openAlert}
               onViewEvents={viewEvents}
             />

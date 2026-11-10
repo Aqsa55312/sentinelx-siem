@@ -381,3 +381,163 @@ func (s *MemoryStore) userByIDLocked(orgID, id string) string {
 	}
 	return ""
 }
+
+// ---------- Week 7: response simulation + approval flow ----------
+
+func (s *MemoryStore) CreateResponseAction(orgID, actor, incidentID, actionType, target, reason string) (ResponseAction, error) {
+	if !validResponseActionType(actionType) {
+		return ResponseAction{}, fmt.Errorf("unsupported action type")
+	}
+	target = strings.TrimSpace(target)
+	reason = strings.TrimSpace(reason)
+	if target == "" {
+		return ResponseAction{}, fmt.Errorf("target is required")
+	}
+	if reason == "" {
+		return ResponseAction{}, fmt.Errorf("reason is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inc, ok := s.incidentByIDLocked(orgID, incidentID)
+	if !ok {
+		return ResponseAction{}, fmt.Errorf("incident not found")
+	}
+	if inc.Status == incidentStatusClosed || inc.Status == incidentStatusFalsePositive {
+		return ResponseAction{}, fmt.Errorf("cannot respond to a %s incident", inc.Status)
+	}
+	now := time.Now().UTC()
+	ra := ResponseAction{
+		ID:         newID("ra"),
+		OrgID:      orgID,
+		IncidentID: incidentID,
+		ActionType: actionType,
+		Target:     target,
+		Reason:     reason,
+		Status:     responseActionStatusPending,
+		CreatedBy:  actor,
+		CreatedAt:  now,
+	}
+	s.responseActions = append(s.responseActions, ra)
+	s.appendTimelineLocked(orgID, incidentID, "response_action_created", actor,
+		fmt.Sprintf("Response action %s on %s requested", actionType, target), now)
+	s.recordAuditLocked(orgID, actor, "response_action.created", ra.ID, "ok", "")
+	return ra, nil
+}
+
+func (s *MemoryStore) ListResponseActions(orgID, incidentID string) []ResponseAction {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []ResponseAction{}
+	for _, ra := range s.responseActions {
+		if ra.OrgID == orgID && ra.IncidentID == incidentID {
+			out = append(out, ra)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out
+}
+
+func (s *MemoryStore) GetResponseAction(orgID, id string) (ResponseAction, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.responseActions {
+		if s.responseActions[i].ID == id && s.responseActions[i].OrgID == orgID {
+			return s.responseActions[i], true
+		}
+	}
+	return ResponseAction{}, false
+}
+
+func (s *MemoryStore) ApproveResponseAction(orgID, id, actor string) (ResponseAction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx := -1
+	for i := range s.responseActions {
+		if s.responseActions[i].ID == id && s.responseActions[i].OrgID == orgID {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return ResponseAction{}, fmt.Errorf("response action not found")
+	}
+	ra := &s.responseActions[idx]
+	if ra.Status != responseActionStatusPending {
+		return ResponseAction{}, fmt.Errorf("response action is not pending")
+	}
+	if _, ok := s.incidentByIDLocked(orgID, ra.IncidentID); !ok {
+		return ResponseAction{}, fmt.Errorf("incident not found")
+	}
+	now := time.Now().UTC()
+	ra.Status = responseActionStatusApproved
+	ra.ApproverID = actor
+	apprAt := now
+	ra.ApprovedAt = &apprAt
+	// Execute in simulator only (no production change).
+	ra.Status = responseActionStatusExecuted
+	ra.ExecutedBy = actor
+	execAt := now
+	ra.ExecutedAt = &execAt
+	ra.Result = simulateResponse(ra.ActionType, ra.Target)
+	s.appendTimelineLocked(orgID, ra.IncidentID, "response_action_executed", actor,
+		fmt.Sprintf("Response action %s on %s executed (simulated): %s", ra.ActionType, ra.Target, ra.Result), now)
+	s.recordAuditLocked(orgID, actor, "response_action.executed", ra.ID, "ok", "")
+	return *ra, nil
+}
+
+func (s *MemoryStore) RejectResponseAction(orgID, id, actor, reason string) (ResponseAction, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return ResponseAction{}, fmt.Errorf("rejection reason is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx := -1
+	for i := range s.responseActions {
+		if s.responseActions[i].ID == id && s.responseActions[i].OrgID == orgID {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return ResponseAction{}, fmt.Errorf("response action not found")
+	}
+	ra := &s.responseActions[idx]
+	if ra.Status != responseActionStatusPending {
+		return ResponseAction{}, fmt.Errorf("response action is not pending")
+	}
+	now := time.Now().UTC()
+	ra.Status = responseActionStatusRejected
+	s.appendTimelineLocked(orgID, ra.IncidentID, "response_action_rejected", actor,
+		fmt.Sprintf("Response action %s on %s rejected: %s", ra.ActionType, ra.Target, reason), now)
+	s.recordAuditLocked(orgID, actor, "response_action.rejected", ra.ID, "ok", "")
+	return *ra, nil
+}
+
+// recordAuditLocked appends an audit entry; caller MUST hold s.mu.
+func (s *MemoryStore) recordAuditLocked(orgID, actor, action, target, result, corrID string) {
+	s.audits++
+	s.auditLog = append(s.auditLog, AuditEntry{
+		ID:            newID("aud"),
+		OrgID:         orgID,
+		ActorID:       actor,
+		Action:        action,
+		TargetID:      target,
+		Result:        result,
+		CorrelationID: corrID,
+		CreatedAt:     time.Now().UTC(),
+	})
+}
+
+func (s *MemoryStore) ListAuditLogs(orgID string) []AuditEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []AuditEntry{}
+	for _, e := range s.auditLog {
+		if e.OrgID == orgID {
+			out = append(out, e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out
+}

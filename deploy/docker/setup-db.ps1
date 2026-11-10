@@ -20,7 +20,10 @@ if ($running -notmatch 'is running') {
 }
 & "$bin\\psql.exe" -h localhost -p $port -U sentinelx -d postgres -c "CREATE DATABASE sentinelx;" 2>$null
 if ($LASTEXITCODE -ne 0) { Write-Host "(database sentinelx may already exist)" }
-& "$bin\\psql.exe" -h localhost -p $port -U sentinelx -d sentinelx -v ON_ERROR_STOP=1 -f (Join-Path $root 'database\\migrations\\001_init.sql')
+foreach ($m in @('001_init.sql','002_detection.sql','003_incidents.sql','004_response_actions.sql')) {
+  & "$bin\\psql.exe" -h localhost -p $port -U sentinelx -d sentinelx -v ON_ERROR_STOP=1 -f (Join-Path $root 'database\\migrations\\' + $m)
+  if ($LASTEXITCODE -ne 0) { Write-Host "migration $m failed"; exit 1 }
+}
 & "$bin\\psql.exe" -h localhost -p $port -U sentinelx -d sentinelx -v ON_ERROR_STOP=1 -f (Join-Path $root 'database\\seeds\\seed.sql')
 Write-Host ""
 Write-Host 'OK. Export this for the API:'
